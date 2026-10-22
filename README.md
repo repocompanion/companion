@@ -20,6 +20,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Bounded context** for agents: `docs_get_context` returns a 200-doc index by default, with `max_docs`/`full` controls and visible warnings when open PRs could not be checked.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
+- **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -130,6 +131,7 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync export agents-md` | Managed AGENTS.md block for coding agents |
 | `docsync export llms-txt` | Compact llms.txt discovery file |
 | `docsync export context` | Bounded JSON/Markdown context bundle |
+| `docsync import --from <dir>` | Dry-run or apply a legacy Markdown migration |
 | `docsync change start "<topic>"` | Start a changeset |
 | `docsync change join <PR#>` | Join a shared changeset |
 | `docsync change sync [id]` | Commit, integrate, push, create/update draft PR |
@@ -169,6 +171,25 @@ groups and top BM25 guidance for common tasks.
 block and preserves human content outside it. It refuses to overwrite a file
 without that block unless `--force` is passed. Without `--output`, all export
 commands write to stdout.
+
+## Importing existing documentation
+
+```bash
+# Inspect the proposed mapping without writing anything.
+docsync import --from ./docs --project acme/api --report migration.json
+
+# Resolve ambiguous files with a path mapping.
+docsync import --from ./docs --project acme/api --map mapping.json --apply
+```
+
+The importer detects README/architecture docs, ADRs, flows, runbooks, patterns
+and standards from frontmatter, paths and headings. Ambiguous entries,
+aggregate files and collisions are marked `unresolved` or `collision` rather
+than guessed. `--apply` requires a report with no unresolved entries, writes
+the documents into one changeset and opens/updates a draft PR.
+
+The current implementation copies external files. `git mv`/history preservation
+and aggregate-section mappings are deferred; see `CAVEATS.md`.
 
 ## MCP roots, resources and pagination
 
@@ -298,5 +319,7 @@ manually against a sandbox repository.
 - The current MCP roots implementation is intentionally lazy and cache-aware;
   it does not yet use the newer multi-round-trip roots input request.
 - Image/binary additions are a human CLI/editor action, not an MCP write.
+- Import copies files; it does not yet preserve Git history with `git mv`.
+- `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
 
 See `PLAN.md` for the full design and roadmap.

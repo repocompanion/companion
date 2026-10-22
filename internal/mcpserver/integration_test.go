@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,7 +100,8 @@ last_reviewed: 2026-01-01
 	t.Cleanup(func() { _ = st.MakeWritable() })
 
 	ctx := context.Background()
-	server, err := NewServer(Options{Cwd: seed, Project: "acme/api"})
+	outside := t.TempDir()
+	server, err := NewServer(Options{Cwd: outside, Project: "acme/api"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +112,7 @@ last_reviewed: 2026-01-01
 	}
 	defer ss.Close()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	client.AddRoots(&mcp.Root{URI: (&url.URL{Scheme: "file", Path: seed}).String()})
 	cs, err := client.Connect(ctx, ctt, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -171,12 +174,54 @@ last_reviewed: 2026-01-01
 	if ctxOut["structure"] == nil {
 		t.Fatal("docs_get_context did not return the canonical structure")
 	}
+	rootCtx, _ := ctxOut["context"].(map[string]any)
+	if rootCtx["repo_root"] != "" {
+		seedReal, _ := filepath.EvalSymlinks(seed)
+		repoRoot, _ := rootCtx["repo_root"].(string)
+		repoReal, _ := filepath.EvalSymlinks(repoRoot)
+		if repoReal != seedReal {
+			t.Fatalf("root was not used for context: repo_root=%q seed=%q", repoRoot, seedReal)
+		}
+	} else {
+		t.Fatal("MCP root did not populate repo_root")
+	}
 	limited := call("docs_get_context", map[string]any{"max_docs": 1})
 	if docs, _ := limited["docs"].([]any); len(docs) != 1 {
 		t.Fatalf("bounded context returned %d docs", len(docs))
 	}
 	if limited["truncated"] != true || limited["total_docs"].(float64) <= 1 {
 		t.Fatalf("context was not marked truncated: %v", limited)
+	}
+	if limited["next_cursor"] == nil || limited["next_cursor"] == "" {
+		t.Fatalf("context did not return a next cursor: %v", limited)
+	}
+	contextPage2 := call("docs_get_context", map[string]any{"max_docs": 1, "cursor": limited["next_cursor"]})
+	page1Docs, _ := limited["docs"].([]any)
+	page2Docs, _ := contextPage2["docs"].([]any)
+	if len(page2Docs) != 1 || len(page1Docs) != 1 || page1Docs[0].(map[string]any)["path"] == page2Docs[0].(map[string]any)["path"] {
+		t.Fatalf("context pagination repeated or dropped a doc: %v / %v", page1Docs, page2Docs)
+	}
+	listPage := call("docs_list", map[string]any{"scope": "project", "limit": 1})
+	listPageDocs, _ := listPage["docs"].([]any)
+	if len(listPageDocs) != 1 || listPage["next_cursor"] == "" {
+		t.Fatalf("list pagination failed: %v", listPage)
+	}
+	listPage2 := call("docs_list", map[string]any{"scope": "project", "limit": 1, "cursor": listPage["next_cursor"]})
+	listPage2Docs, _ := listPage2["docs"].([]any)
+	if len(listPage2Docs) != 1 || listPageDocs[0].(map[string]any)["path"] == listPage2Docs[0].(map[string]any)["path"] {
+		t.Fatalf("list pagination repeated or dropped a doc: %v / %v", listPageDocs, listPage2Docs)
+	}
+	resources, err := cs.ListResourceTemplates(ctx, nil)
+	if err != nil || len(resources.ResourceTemplates) < 2 {
+		t.Fatalf("resource templates = %+v, err=%v", resources, err)
+	}
+	docResource, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "docsync://docs/projects/acme/api/README.md"})
+	if err != nil || len(docResource.Contents) == 0 || !strings.Contains(docResource.Contents[0].Text, "Acme API") {
+		t.Fatalf("document resource = %+v, err=%v", docResource, err)
+	}
+	tmplResource, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "docsync://templates/flow"})
+	if err != nil || len(tmplResource.Contents) == 0 || !strings.Contains(tmplResource.Contents[0].Text, "## Trigger") {
+		t.Fatalf("template resource = %+v, err=%v", tmplResource, err)
 	}
 	errText := callError("docs_delete", map[string]any{"path": "notes.txt", "base_rev": "deadbeef"})
 	if !strings.Contains(errText, "may write or delete .md and .mmd") {
@@ -249,6 +294,16 @@ last_reviewed: 2026-01-01
 	firstHit, _ := hits[0].(map[string]any)
 	if firstHit["snippet"] == "" || firstHit["matched_terms"] == nil || firstHit["why"] == "" {
 		t.Fatalf("search hit lacks BM25 metadata: %v", firstHit)
+	}
+	searchPage := call("docs_search", map[string]any{"query": "flow", "limit": 1})
+	searchPageHits, _ := searchPage["hits"].([]any)
+	if len(searchPageHits) != 1 || searchPage["next_cursor"] == "" {
+		t.Fatalf("search pagination failed: %v", searchPage)
+	}
+	searchPage2 := call("docs_search", map[string]any{"query": "flow", "limit": 1, "cursor": searchPage["next_cursor"]})
+	searchPage2Hits, _ := searchPage2["hits"].([]any)
+	if len(searchPage2Hits) != 1 || searchPageHits[0].(map[string]any)["path"] == searchPage2Hits[0].(map[string]any)["path"] {
+		t.Fatalf("search pagination repeated or dropped a hit: %v / %v", searchPageHits, searchPage2Hits)
 	}
 	legacyRead := call("docs_read", map[string]any{"path": "flows/legacy.md"})
 	legacyDelete := call("docs_delete", map[string]any{"path": "flows/legacy.md", "base_rev": legacyRead["hash"]})

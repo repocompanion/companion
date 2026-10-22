@@ -51,4 +51,17 @@ func TestServerListsExpectedTools(t *testing.T) {
 			t.Fatalf("tool list = %v, want %v", names, want)
 		}
 	}
+	byName := map[string]*mcp.Tool{}
+	for _, tool := range res.Tools {
+		byName[tool.Name] = tool
+	}
+	if a := byName["docs_search"].Annotations; a == nil || !a.ReadOnlyHint {
+		t.Fatalf("docs_search annotations = %+v, want read-only", a)
+	}
+	if a := byName["docs_write"].Annotations; a == nil || a.DestructiveHint == nil || !*a.DestructiveHint {
+		t.Fatalf("docs_write annotations = %+v, want destructive", a)
+	}
+	if a := byName["docs_record_decision"].Annotations; a == nil || !a.IdempotentHint {
+		t.Fatalf("docs_record_decision annotations = %+v, want idempotent", a)
+	}
 }

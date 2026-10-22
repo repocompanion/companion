@@ -43,6 +43,10 @@ type provider struct {
 	opts Options
 	mu   sync.Mutex
 	rt   *runtime.Runtime
+
+	rootsMu    sync.Mutex
+	roots      map[*mcp.ServerSession]string
+	rootsKnown map[*mcp.ServerSession]bool
 }
 
 func (p *provider) runtime() (*runtime.Runtime, error) {
@@ -59,7 +63,15 @@ func (p *provider) runtime() (*runtime.Runtime, error) {
 	return rt, nil
 }
 
-func (p *provider) session(ctx context.Context, project string) (*runtime.Session, error) {
+func (p *provider) session(ctx context.Context, req *mcp.CallToolRequest, project string) (*runtime.Session, error) {
+	var session *mcp.ServerSession
+	if req != nil {
+		session = req.Session
+	}
+	return p.sessionFor(ctx, session, project)
+}
+
+func (p *provider) sessionFor(ctx context.Context, session *mcp.ServerSession, project string) (*runtime.Session, error) {
 	rt, err := p.runtime()
 	if err != nil {
 		return nil, err
@@ -67,7 +79,11 @@ func (p *provider) session(ctx context.Context, project string) (*runtime.Sessio
 	if project == "" {
 		project = p.opts.Project
 	}
-	return rt.Session(ctx, project, p.opts.Team, p.opts.Domain, p.opts.Languages)
+	cwd := p.opts.Cwd
+	if root := p.rootFor(ctx, session); root != "" {
+		cwd = root
+	}
+	return rt.SessionAt(ctx, cwd, project, p.opts.Team, p.opts.Domain, p.opts.Languages)
 }
 
 func requireStore(s *runtime.Session) error {
@@ -114,15 +130,26 @@ func NewServer(opts Options) (*mcp.Server, error) {
 	if opts.Cwd == "" {
 		return nil, errors.New("mcp server requires a working directory")
 	}
-	p := &provider{opts: opts}
+	p := &provider{opts: opts, roots: map[*mcp.ServerSession]string{}, rootsKnown: map[*mcp.ServerSession]bool{}}
 	server := mcp.NewServer(&mcp.Implementation{
 		Name: "docsync", Title: "docsync", Version: "0.1.0",
 		Description: "Git-backed project docs and guidance for coding agents",
-	}, &mcp.ServerOptions{Instructions: serverInstructions})
+	}, &mcp.ServerOptions{
+		Instructions: serverInstructions,
+		// MCP roots are deprecated from protocol 2026-07-28 onward. Keep the
+		// 2025-11-25 protocol so roots remain available through the documented
+		// deprecation window; newer clients fall back to cwd when we migrate to
+		// multi-round-trip input requests.
+		SupportedProtocolVersions: []string{"2025-11-25"},
+		RootsListChangedHandler: func(ctx context.Context, req *mcp.RootsListChangedRequest) {
+			p.invalidateRoot(req.Session)
+		},
+	})
 
 	registerContextTools(server, p)
 	registerChangeTools(server, p)
 	registerKnowledgeTools(server, p)
+	registerResources(server, p)
 	registerPrompts(server, p)
 	return server, nil
 }
@@ -139,7 +166,8 @@ func Run(ctx context.Context, opts Options) error {
 
 type projectIn struct {
 	Project string `json:"project,omitempty" jsonschema:"project as owner/repo; defaults to the detected current repository"`
-	MaxDocs int    `json:"max_docs,omitempty" jsonschema:"maximum docs in the index; default 200"`
+	MaxDocs int    `json:"max_docs,omitempty" jsonschema:"page size for the doc index; default 200"`
+	Cursor  string `json:"cursor,omitempty" jsonschema:"opaque pagination cursor from a previous response"`
 	Full    bool   `json:"full,omitempty" jsonschema:"return the full document index instead of the bounded view"`
 }
 
@@ -157,6 +185,7 @@ type contextOut struct {
 	MirrorRev      string        `json:"mirror_rev"`
 	MirrorAge      string        `json:"mirror_age"`
 	Warnings       []string      `json:"warnings,omitempty"`
+	NextCursor     string        `json:"next_cursor,omitempty"`
 	Structure      structureInfo `json:"structure"`
 }
 
@@ -170,11 +199,11 @@ type docIndex struct {
 }
 
 func registerContextTools(s *mcp.Server, p *provider) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_get_context",
 		Description: "Entry point for doc work. Resolves the project and returns the doc index, open PRs, missing required docs, active changesets and mirror freshness. Does not create anything.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -212,9 +241,15 @@ func registerContextTools(s *mcp.Server, p *provider) {
 			maxDocs = 2000
 		}
 		truncated := false
-		if !in.Full && len(docs) > maxDocs {
-			docs = docs[:maxDocs]
-			truncated = true
+		nextCursor := ""
+		if !in.Full {
+			page, next, perr := pageItems(docs, in.Cursor, maxDocs, 200, 2000)
+			if perr != nil {
+				return errorResult(perr)
+			}
+			docs = page
+			nextCursor = next
+			truncated = next != ""
 		}
 		var prs []any
 		prsChecked := false
@@ -248,10 +283,10 @@ func registerContextTools(s *mcp.Server, p *provider) {
 			ReturnedDocs: len(docs), Truncated: truncated, Missing: missing,
 			OpenPRs: prs, OpenPRsChecked: prsChecked, Changesets: cs, MirrorRev: rev,
 			MirrorAge: humanAge(time.Since(ct)), Warnings: warnings,
-			Structure: canonicalStructure(),
+			NextCursor: nextCursor, Structure: canonicalStructure(),
 		}
 		if truncated {
-			out.Warnings = append(out.Warnings, fmt.Sprintf("context index truncated at %d of %d docs; use docs_search or docs_list for more, or pass full=true", len(docs), totalDocs))
+			out.Warnings = append(out.Warnings, fmt.Sprintf("context index page shows %d of %d docs; use next_cursor, docs_search/docs_list, or full=true", len(docs), totalDocs))
 		}
 		if time.Since(ct) > 24*time.Hour && !ct.IsZero() {
 			out.Warnings = append(out.Warnings, "the main mirror is more than 24h old; call docs_pull")
@@ -265,11 +300,11 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		MaxResults int    `json:"max_results,omitempty" jsonschema:"maximum results, default 5"`
 		Project    string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_get_guidance",
 		Description: "Entry point for coding tasks. Returns ranked patterns, ADRs and standards with reference implementation locations.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in guidIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -286,13 +321,15 @@ func registerContextTools(s *mcp.Server, p *provider) {
 	type listIn struct {
 		Dir     string `json:"dir,omitempty"`
 		Scope   string `json:"scope,omitempty" jsonschema:"project|team|org|all"`
+		Limit   int    `json:"limit,omitempty" jsonschema:"maximum documents in this page; default 200"`
+		Cursor  string `json:"cursor,omitempty" jsonschema:"opaque pagination cursor from a previous response"`
 		Project string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_list",
 		Description: "List documents in the current project, team, org or whole store.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in listIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -307,27 +344,33 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		if err != nil {
 			return errorResult(err)
 		}
-		var out []docIndex
+		out := make([]docIndex, 0, len(o.Docs))
 		for _, d := range o.Docs {
 			out = append(out, docIndex{
 				Path: d.Path, Title: d.Frontmatter.Title, Kind: d.Frontmatter.Kind,
 				Status: d.Frontmatter.Status, Source: o.Sources[d.Path], State: o.States[d.Path],
 			})
 		}
-		return textResult(map[string]any{"dir": dir, "docs": out})
+		total := len(out)
+		page, next, err := pageItems(out, in.Cursor, in.Limit, 200, 1000)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(map[string]any{"dir": dir, "docs": page, "total": total, "next_cursor": next})
 	})
 
 	type searchIn struct {
 		Query   string `json:"query"`
 		Scope   string `json:"scope,omitempty" jsonschema:"project|team|org|all"`
-		Limit   int    `json:"limit,omitempty"`
+		Limit   int    `json:"limit,omitempty" jsonschema:"maximum hits in this page; default 50"`
+		Cursor  string `json:"cursor,omitempty" jsonschema:"opaque pagination cursor from a previous response"`
 		Project string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_search",
 		Description: "Search with BM25 ranking, field weighting and snippets. Includes the active changeset overlay.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in searchIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -342,7 +385,12 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		if err != nil {
 			return errorResult(err)
 		}
-		hits, err := search.Search(o.Docs, in.Query, in.Limit)
+		hits, err := search.Search(o.Docs, in.Query, len(o.Docs)+1)
+		if err != nil {
+			return errorResult(err)
+		}
+		total := len(hits)
+		hits, next, err := pageItems(hits, in.Cursor, in.Limit, 50, 200)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -350,7 +398,7 @@ func registerContextTools(s *mcp.Server, p *provider) {
 			hits[i].Source = o.Sources[hits[i].Path]
 			hits[i].State = o.States[hits[i].Path]
 		}
-		return textResult(map[string]any{"query": in.Query, "hits": hits, "count": len(hits)})
+		return textResult(map[string]any{"query": in.Query, "hits": hits, "count": len(hits), "total": total, "next_cursor": next})
 	})
 
 	type readIn struct {
@@ -359,11 +407,11 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		PR      int    `json:"pr,omitempty"`
 		Project string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_read",
 		Description: "Read a document from main, a revision or a PR. Returns base_rev/hash for optimistic writes and pending PRs touching the area.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in readIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -424,11 +472,11 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		WIP     bool   `json:"wip,omitempty"`
 		Project string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_history",
 		Description: "Show merged versions, authors, PRs and agent involvement; optionally local changeset commits.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in historyIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -466,11 +514,11 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		PR      int    `json:"pr,omitempty"`
 		Project string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_diff",
 		Description: "Diff document versions or a PR against main.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in diffIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -493,11 +541,11 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		return textResult(map[string]any{"path": rel, "diff": out})
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_pull",
 		Description: "Fetch origin/main and fast-forward the local mirror. Use when docs_get_context reports a stale mirror.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, "")
+		sess, err := p.session(ctx, req, "")
 		if err != nil {
 			return errorResult(err)
 		}

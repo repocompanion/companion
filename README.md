@@ -29,7 +29,8 @@ This is an early, working implementation of `PLAN.md`.
 - **GitHub integration** through SSH for Git and a token from
   `DOCSYNC_FORGE_TOKEN`, `forge.token`, or `gh auth token` for PRs.
 - **MCP server** on stdio with context, guidance, read/history, changeset and
-  review-comment tools.
+  review-comment tools, plus roots, document/template resources and cursor
+  pagination.
 - **Layered context resolution** with provenance: flags, environment, repo
   `.docsync.yaml`, user config, org registry, Git/manifests/hostname.
 - **BM25 search** with field weighting, snippets, matched terms and score
@@ -169,6 +170,19 @@ block and preserves human content outside it. It refuses to overwrite a file
 without that block unless `--force` is passed. Without `--output`, all export
 commands write to stdout.
 
+## MCP roots, resources and pagination
+
+- `docs_list`, `docs_search` and `docs_get_context` accept `limit`/`max_docs`
+  and an opaque `cursor`; responses include `next_cursor` when another page
+  exists.
+- `docsync://docs/{+path}` resources return an overlay-aware document.
+- `docsync://templates/{kind}` resources return canonical skeletons.
+- Tool annotations distinguish read-only, destructive and idempotent tools.
+- MCP roots are used for project discovery when the client provides them. The
+  current implementation negotiates protocol `2025-11-25` so the roots API
+  remains available during its deprecation window; newer protocol versions fall
+  back to cwd until multi-round-trip roots support is added.
+
 ## MCP document structure
 
 MCP writes are validated. A project uses this canonical layout:
@@ -279,8 +293,10 @@ manually against a sandbox repository.
 - No web UI, live co-editing, semantic search or background daemon.
 - GitHub review/check display is minimal; branch protection remains the source
   of truth.
-- MCP project detection uses the process cwd and the `project` argument; MCP
-  client roots are not consulted yet.
+- MCP roots are supported on protocol `2025-11-25`; protocol `2026-07-28+`
+  falls back to cwd because roots were replaced by multi-round-trip requests.
+- The current MCP roots implementation is intentionally lazy and cache-aware;
+  it does not yet use the newer multi-round-trip roots input request.
 - Image/binary additions are a human CLI/editor action, not an MCP write.
 
 See `PLAN.md` for the full design and roadmap.

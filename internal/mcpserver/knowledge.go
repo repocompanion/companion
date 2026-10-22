@@ -35,11 +35,11 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 		Scope        string `json:"scope,omitempty" jsonschema:"project|team|org; default project"`
 		Project      string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_record_decision",
 		Description: "Create a date-stamped ADR. Project scope can use the active project changeset; org/team scope gets its own changeset and draft PR.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in decisionIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -88,11 +88,11 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 		ReferenceImpls []refIn  `json:"reference_impls,omitempty"`
 		Project        string   `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_propose_pattern",
 		Description: "Draft a new org/team pattern (status proposed) from code the agent just built, in its own changeset and draft PR.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in patternIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -157,11 +157,11 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 	type scaffoldIn struct {
 		Project string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_scaffold_project",
 		Description: "Explicitly create a README/architecture skeleton for a project with no docs, in a new changeset and draft PR.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in scaffoldIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -237,11 +237,11 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 		Scope   string `json:"scope" jsonschema:"user|repo|registry"`
 		Project string `json:"project,omitempty"`
 	}
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "docs_set_context",
 		Description: "Set user or repo context. registry scope opens a docsync PR against the org registry.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in setContextIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, in.Project)
+		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}

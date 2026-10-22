@@ -71,11 +71,21 @@ type Session struct {
 // Session resolves context for a command or MCP tool. project is only needed
 // when the caller wants to override the detected project.
 func (r *Runtime) Session(ctx context.Context, project, team, domain string, languages []string) (*Session, error) {
-	detected := gitx.Detect(ctx, r.Cwd)
+	return r.SessionAt(ctx, r.Cwd, project, team, domain, languages)
+}
+
+// SessionAt resolves context from an explicit working directory. MCP roots use
+// this so a client-provided root can determine the project without relying on
+// the server process cwd.
+func (r *Runtime) SessionAt(ctx context.Context, cwd, project, team, domain string, languages []string) (*Session, error) {
+	if cwd == "" {
+		cwd = r.Cwd
+	}
+	detected := gitx.Detect(ctx, cwd)
 	repo, _ := config.LoadRepo(detected.Root)
 	registry, _ := config.LoadRegistry(r.Store.Mirror)
 	resolved := config.Resolve(ctx, config.ResolveInput{
-		Cwd:      r.Cwd,
+		Cwd:      cwd,
 		Flags:    config.Flags{Project: project, Team: team, Domain: domain, Languages: languages},
 		User:     r.Cfg,
 		Repo:     repo,

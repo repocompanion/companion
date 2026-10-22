@@ -19,6 +19,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Active changeset overlay** for reads: pending additions/modifications are visible, deleted docs are tombstoned, and results carry `source`/`state`.
 - **Bounded context** for agents: `docs_get_context` returns a 200-doc index by default, with `max_docs`/`full` controls and visible warnings when open PRs could not be checked.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
+- **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -125,6 +126,9 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync cat <doc> [--rev R] [--pr N]` | Print a document; reports changeset deletions |
 | `docsync search <query> [--all]` | Search with the active changeset overlay |
 | `docsync guidance "<task>" [--lang go]` | Ranked patterns, ADRs, standards |
+| `docsync export agents-md` | Managed AGENTS.md block for coding agents |
+| `docsync export llms-txt` | Compact llms.txt discovery file |
+| `docsync export context` | Bounded JSON/Markdown context bundle |
 | `docsync change start "<topic>"` | Start a changeset |
 | `docsync change join <PR#>` | Join a shared changeset |
 | `docsync change sync [id]` | Commit, integrate, push, create/update draft PR |
@@ -147,6 +151,23 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync registry add-repo <repo> --team <t>` | Update the org registry via PR |
 | `docsync doctor [--online]` | Check git, store, auth and mirror |
 | `docsync mcp` | Run the MCP server on stdio |
+
+## Exports for non-MCP agents
+
+```bash
+docsync export agents-md --output AGENTS.md
+docsync export llms-txt --output llms.txt
+docsync export context --format markdown --output context.md
+```
+
+Exports use the active changeset overlay, so pending docs are visible with their
+source/state. They include a snapshot warning, required-doc status, documentation
+groups and top BM25 guidance for common tasks.
+
+`agents-md` writes a managed `<!-- docsync:begin -->` / `<!-- docsync:end -->`
+block and preserves human content outside it. It refuses to overwrite a file
+without that block unless `--force` is passed. Without `--output`, all export
+commands write to stdout.
 
 ## MCP document structure
 

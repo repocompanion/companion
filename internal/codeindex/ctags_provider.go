@@ -57,7 +57,7 @@ func (p *CtagsProvider) Languages() []string {
 }
 
 func (p *CtagsProvider) Capabilities() Capabilities {
-	return Capabilities{Paths: true, Symbols: true, Fingerprint: true}
+	return Capabilities{Index: true, Paths: true, Symbols: true, Fingerprint: true}
 }
 
 func (p *CtagsProvider) SupportsPath(file string) bool {

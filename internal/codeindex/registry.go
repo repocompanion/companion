@@ -18,6 +18,9 @@ func NewRegistry(providers ...Provider) *Registry {
 
 func NewDefaultRegistry() *Registry {
 	providers := []Provider{NewGoProvider()}
+	if lsp := NewLSPProvider(); lsp != nil && lsp.Available {
+		providers = append(providers, lsp)
+	}
 	if c := NewCtagsProvider(); c != nil && c.Available {
 		providers = append(providers, c)
 	}
@@ -51,7 +54,7 @@ func (r *Registry) Index(ctx context.Context, req IndexRequest) (*Catalog, error
 	}
 	cat := &Catalog{Repo: req.Repo, Commit: req.Commit}
 	for _, provider := range r.Providers {
-		if provider == nil {
+		if provider == nil || !provider.Capabilities().Index {
 			continue
 		}
 		snap, err := provider.Index(ctx, req)

@@ -69,6 +69,7 @@ const (
 )
 
 type Capabilities struct {
+	Index       bool `json:"index"`
 	Paths       bool `json:"paths"`
 	Symbols     bool `json:"symbols"`
 	Definitions bool `json:"definitions"`

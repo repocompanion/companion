@@ -21,7 +21,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
 - **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
-- **Reference validation**: validate `reference_impls` paths and symbols in the current repo, with Go, optional ctags and advisory drift checks.
+- **Reference validation**: validate `reference_impls` paths and symbols in the current repo, with Go, optional ctags/LSP and advisory drift checks.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -281,7 +281,21 @@ docsync code find Consumer.Run --path internal/consumer
 
 `code map` and `code find` aggregate available providers. The index cache lives
 under `~/.docsync/cache/code/<repo>/<commit>/` and is keyed by provider version.
-`docsync doctor` reports whether the Go and ctags providers are available.
+`docsync doctor` reports whether Go, ctags and LSP providers are available.
+
+Optional LSP servers:
+
+```text
+TypeScript/JavaScript  typescript-language-server --stdio
+Python                 pyright-langserver --stdio or pylsp
+PHP                    intelephense --stdio or phpactor language-server
+Java                   jdtls
+Kotlin                 kotlin-language-server
+Rust                   rust-analyzer
+```
+
+LSP is live and current-repo-only; it is not used as a durable index and has no
+background daemon.
 
 ## Configuration
 
@@ -366,7 +380,8 @@ manually against a sandbox repository.
 - `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
 - Code-reference validation is strongest for Go; non-Go syntax symbols require
   `universal-ctags`. Without it they use `git grep` and are marked `unverified`.
-- LSP and SCIP providers are not implemented yet.
+- LSP provider supports live current-repo definitions when a language server is installed.
+- LSP references and SCIP are not implemented yet.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.
 - ctags is syntax-only and language coverage depends on the installed

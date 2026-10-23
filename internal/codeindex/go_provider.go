@@ -48,7 +48,7 @@ func (p *GoProvider) SupportsPath(file string) bool {
 }
 
 func (p *GoProvider) Capabilities() Capabilities {
-	return Capabilities{Paths: true, Symbols: true, Definitions: true, Fingerprint: true}
+	return Capabilities{Index: true, Paths: true, Symbols: true, Definitions: true, Fingerprint: true}
 }
 
 func (p *GoProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot, error) {

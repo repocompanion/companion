@@ -208,6 +208,7 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync stale [--all]` | Show documents with stale code references |
 | `docsync code map [--path DIR]` | Index available code symbols in the current repo |
 | `docsync code find <symbol>` | Resolve a code symbol |
+| `docsync code refs <symbol>` | Find LSP references to a symbol |
 | `docsync config get\|set\|init-repo` | Manage user and repo config |
 | `docsync registry add-repo <repo> --team <t>` | Update the org registry via PR |
 | `docsync doctor [--online]` | Check git, store, auth, mirror and code providers |
@@ -288,7 +289,8 @@ with `git mv` and validates the destination.
 
 Read: `docs_get_context`, `docs_get_guidance`, `docs_list`, `docs_search`,
 `docs_read`, `docs_history`, `docs_diff`, `docs_pull`,
-`docs_validate_code_refs`, `docs_stale`, `docs_code_map`, `docs_code_find`.
+`docs_validate_code_refs`, `docs_stale`, `docs_code_map`, `docs_code_find`,
+`docs_code_refs`.
 
 Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
 `docs_move`, `docs_delete`, `docs_record_decision`, `docs_propose_pattern`, `docs_scaffold_project`,
@@ -345,6 +347,9 @@ docsync code map --path internal/consumer
 # Resolve a specific symbol.
 docsync code find Consumer.Run --path internal/consumer
 
+# Find references to a symbol through LSP.
+docsync code refs Consumer.Run --path internal/consumer --include-declaration
+
 # Show available providers.
 docsync doctor
 ```
@@ -368,6 +373,7 @@ The same operations are available as read-only tools:
 | `docs_stale` | Return documents with stale references |
 | `docs_code_map` | Return bounded Go/ctags symbols for the current repo |
 | `docs_code_find` | Resolve a symbol live through available providers |
+| `docs_code_refs` | Find references through an available LSP provider |
 
 Examples:
 
@@ -377,6 +383,7 @@ docs_validate_code_refs { "path": "projects/acme/api/patterns/sqs.md" }
 docs_stale { "scope": "project" }
 docs_code_map { "path": "internal/consumer", "kind": "method", "limit": 100 }
 docs_code_find { "symbol": "Consumer.Run", "path": "internal/consumer" }
+docs_code_refs { "symbol": "Consumer.Run", "path": "internal/consumer", "include_declaration": true }
 ```
 
 Reference validation results include:
@@ -395,7 +402,7 @@ warnings and in `docs_stale`, but does not block submit.
 
 - Go definitions/symbols: native.
 - ctags: syntax symbols only.
-- LSP: definitions only; references are pending.
+- LSP: definitions and references when a server is installed.
 - SCIP/LSIF: not implemented.
 - Cross-repo symbol resolution: intentionally out of scope.
 - Go indexes must match the current checkout; non-HEAD symbol validation is
@@ -486,7 +493,7 @@ manually against a sandbox repository.
   `universal-ctags`; live definitions use an installed LSP server. Without either,
   they use `git grep` and are marked `unverified`.
 - The native Go provider is primary; `gopls` is an optional semantic fallback.
-- LSP supports definitions only. References and SCIP are not implemented yet.
+- LSP supports definitions and references. SCIP is not implemented yet.
 - Code-reference validation is not yet part of `docsync lint` or submit preflight.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.

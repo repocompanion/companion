@@ -18,7 +18,7 @@ import (
 func TestLSPClientDefinition(t *testing.T) {
 	root := testRepo(t)
 	file := filepath.Join(root, "app.ts")
-	if err := os.WriteFile(file, []byte("export function handler() {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte("export function handler() {}\nhandler();\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := gitx.Run(context.Background(), root, "add", "."); err != nil {
@@ -44,6 +44,13 @@ func TestLSPClientDefinition(t *testing.T) {
 	}
 	if sym.Provider != "lsp-fake" || sym.Path != "app.ts" || sym.Line != 1 || !strings.Contains(sym.Signature, "handler") {
 		t.Fatalf("symbol = %+v", sym)
+	}
+	refs, err := p.References(context.Background(), ResolveRequest{Repo: "acme/api", Root: root, Commit: commit, Path: "app.ts", Symbol: "handler"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 || refs[0].Path != "app.ts" || refs[1].Line != 2 {
+		t.Fatalf("references = %+v", refs)
 	}
 }
 
@@ -75,6 +82,12 @@ func TestLSPHelperProcess(t *testing.T) {
 			writeTestFrame(map[string]any{"jsonrpc": "2.0", "id": id, "result": []any{map[string]any{
 				"uri": target, "range": map[string]any{"start": map[string]any{"line": 0, "character": 0}},
 			}}})
+		case "textDocument/references":
+			target := pathToFileURI(os.Getenv("LSP_FAKE_FILE"))
+			writeTestFrame(map[string]any{"jsonrpc": "2.0", "id": id, "result": []any{
+				map[string]any{"uri": target, "range": map[string]any{"start": map[string]any{"line": 0, "character": 0}}},
+				map[string]any{"uri": target, "range": map[string]any{"start": map[string]any{"line": 1, "character": 0}}},
+			}})
 		case "shutdown":
 			writeTestFrame(map[string]any{"jsonrpc": "2.0", "id": id, "result": nil})
 		case "exit":

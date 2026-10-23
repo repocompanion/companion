@@ -88,7 +88,7 @@ func (p *LSPProvider) Languages() []string {
 }
 
 func (p *LSPProvider) Capabilities() Capabilities {
-	return Capabilities{Symbols: true, Definitions: true}
+	return Capabilities{Symbols: true, Definitions: true, References: true}
 }
 
 func (p *LSPProvider) SupportsPath(file string) bool {
@@ -142,6 +142,43 @@ func (p *LSPProvider) Resolve(ctx context.Context, req ResolveRequest) (*Symbol,
 		Package: server.Language, Name: lastSymbolPart(req.Symbol), Qualified: req.Symbol,
 		Kind: "symbol", Path: rel, Line: loc.Line + 1, Signature: loc.Signature,
 	}, nil
+}
+
+func (p *LSPProvider) References(ctx context.Context, req ResolveRequest, includeDeclaration bool) ([]ReferenceLocation, error) {
+	server := p.serverForPath(req.Path)
+	if server == nil || strings.TrimSpace(req.Root) == "" || strings.TrimSpace(req.Path) == "" {
+		return nil, ErrUnsupported
+	}
+	head, err := gitx.Run(ctx, req.Root, "rev-parse", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	if req.Commit != "" && req.Commit != head {
+		return nil, ErrCommitMismatch
+	}
+	file := filepath.Join(req.Root, filepath.FromSlash(req.Path))
+	pos, err := findSymbolPosition(file, req.Symbol)
+	if err != nil {
+		return nil, err
+	}
+	client, err := startLSPClient(ctx, req.Root, *server)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	locs, err := client.references(ctx, file, pos, includeDeclaration)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReferenceLocation, 0, len(locs))
+	for _, loc := range locs {
+		rel := loc.Path
+		if r, err := filepath.Rel(req.Root, loc.Path); err == nil {
+			rel = filepath.ToSlash(r)
+		}
+		out = append(out, ReferenceLocation{Path: rel, Line: loc.Line + 1, Signature: loc.Signature})
+	}
+	return out, nil
 }
 
 func (p *LSPProvider) serverForPath(file string) *lspServer {
@@ -266,6 +303,18 @@ func (c *lspClient) definition(ctx context.Context, file string, pos lspPosition
 		return nil, ErrSymbolNotFound
 	}
 	return &loc, nil
+}
+
+func (c *lspClient) references(ctx context.Context, file string, pos lspPosition, includeDeclaration bool) ([]lspLocation, error) {
+	raw, err := c.request(ctx, "textDocument/references", map[string]any{
+		"textDocument": map[string]any{"uri": pathToFileURI(file)},
+		"position":     map[string]any{"line": pos.Line, "character": pos.Character},
+		"context":      map[string]any{"includeDeclaration": includeDeclaration},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseLSPLocations(raw)
 }
 
 func (c *lspClient) request(ctx context.Context, method string, params any) (json.RawMessage, error) {

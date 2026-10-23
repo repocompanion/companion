@@ -72,3 +72,45 @@ func TestGoplsDefinition(t *testing.T) {
 		t.Fatalf("gopls symbol = %+v", sym)
 	}
 }
+
+func TestGoplsReferences(t *testing.T) {
+	gopls, err := exec.LookPath("gopls")
+	if err != nil {
+		t.Skip("gopls is not installed")
+	}
+	root := testRepo(t)
+	if err := os.WriteFile(filepath.Join(root, "internal", "use.go"), []byte("package internal\n\nfunc use(c Consumer) { c.Run() }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitx.Run(context.Background(), root, "add", "."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitx.Run(context.Background(), root, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "use symbol"); err != nil {
+		t.Fatal(err)
+	}
+	commit, err := gitx.Run(context.Background(), root, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &LSPProvider{Servers: []lspServer{{
+		Name: "go", Language: "go", Binary: gopls, Exts: map[string]bool{".go": true},
+	}}, Available: true}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	refs, err := p.References(ctx, ResolveRequest{Repo: "acme/api", Root: root, Commit: commit, Path: "internal/consumer.go", Symbol: "Consumer.Run"}, true)
+	if err != nil {
+		t.Fatalf("gopls references: %v", err)
+	}
+	if len(refs) < 2 {
+		t.Fatalf("gopls references = %+v", refs)
+	}
+	foundUse := false
+	for _, r := range refs {
+		if r.Path == "internal/use.go" {
+			foundUse = true
+		}
+	}
+	if !foundUse {
+		t.Fatalf("gopls references did not include use.go: %+v", refs)
+	}
+}

@@ -114,6 +114,21 @@ type ResolveRequest struct {
 	Symbol string
 }
 
+type ReferenceLocation struct {
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	Signature string `json:"signature,omitempty"`
+}
+
+type ReferenceResult struct {
+	Provider  string              `json:"provider"`
+	Locations []ReferenceLocation `json:"locations"`
+}
+
+type ReferenceProvider interface {
+	References(ctx context.Context, req ResolveRequest, includeDeclaration bool) ([]ReferenceLocation, error)
+}
+
 type Catalog struct {
 	Repo      string      `json:"repo"`
 	Commit    string      `json:"commit"`

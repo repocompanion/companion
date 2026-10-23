@@ -96,6 +96,9 @@ func TestSyncAndSubmitWithFakeGitHub(t *testing.T) {
 	if fake.Draft() {
 		t.Fatal("skip-lint submit did not mark the PR ready")
 	}
+	if !strings.Contains(fake.body, "Docsync-Source: test") {
+		t.Fatalf("submit did not write squash trailers: %s", fake.body)
+	}
 	if _, err := m.Reopen(ctx, c.ID); err != nil {
 		t.Fatalf("reopen after skip-lint submit: %v", err)
 	}

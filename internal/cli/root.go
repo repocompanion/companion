@@ -10,6 +10,7 @@ import (
 
 	"github.com/bolacha/docsync/internal/changeset"
 	"github.com/bolacha/docsync/internal/config"
+	"github.com/bolacha/docsync/internal/forge"
 	"github.com/bolacha/docsync/internal/gitx"
 	"github.com/bolacha/docsync/internal/runtime"
 	"github.com/bolacha/docsync/internal/state"
@@ -175,12 +176,16 @@ func (a *App) initCmd() *cobra.Command {
 				return err
 			}
 			rt.Cfg.Remote = remote
+			if f, ferr := forge.NewFromRemote(remote, rt.Cfg.Forge); ferr == nil {
+				rt.Forge = f
+			}
 			if err := saveUser(rt); err != nil {
 				return err
 			}
 			fmt.Printf("store:  %s\n", rt.Store.Bare)
 			fmt.Printf("mirror: %s\n", rt.Store.Mirror)
 			fmt.Printf("config: %s\n", rt.UserPath)
+			checkInitAuth(rt, remote)
 			fmt.Println()
 			fmt.Println("Add this to each code repo's CLAUDE.md / AGENTS.md / .cursor/rules:")
 			fmt.Println()
@@ -190,6 +195,26 @@ func (a *App) initCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&remote, "remote", "", "store Git remote (SSH), e.g. git@github.com:your-org/docs-store.git")
 	return cmd
+}
+
+func checkInitAuth(rt *runtime.Runtime, remote string) {
+	ctx := context.Background()
+	if out, err := gitx.Run(ctx, "", "ls-remote", "--heads", remote, "main"); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: SSH check failed for %s: %v\n", remote, err)
+	} else if strings.TrimSpace(out) == "" {
+		fmt.Fprintf(os.Stderr, "warning: SSH check succeeded but %s has no main branch\n", remote)
+	} else {
+		fmt.Println("ssh:    ok")
+	}
+	if rt.Forge == nil || !rt.Forge.Available() {
+		fmt.Fprintln(os.Stderr, "warning: GitHub token unavailable; set DOCSYNC_FORGE_TOKEN, configure forge.token, or run `gh auth login`")
+		return
+	}
+	if _, err := rt.Forge.CurrentLogin(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: GitHub token check failed: %v\n", err)
+	} else {
+		fmt.Println("github: ok")
+	}
 }
 
 const snippet = `## Documentation

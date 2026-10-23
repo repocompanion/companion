@@ -706,6 +706,26 @@ func registerContextTools(s *mcp.Server, p *provider) {
 				return errorResult(err)
 			}
 		}
+		if sess.Runtime.Forge != nil && sess.Runtime.Forge.Available() {
+			reviewers := map[int]string{}
+			for i := range revs {
+				pr := revs[i].PR
+				if pr == 0 {
+					continue
+				}
+				name, ok := reviewers[pr]
+				if !ok {
+					names, rerr := sess.Runtime.Forge.Approvals(ctx, pr)
+					if rerr == nil && len(names) > 0 {
+						name = strings.Join(names, ", ")
+					}
+					reviewers[pr] = name
+				}
+				if name != "" {
+					revs[i].Reviewer = name
+				}
+			}
+		}
 		return textResult(map[string]any{"path": rel, "versions": revs})
 	})
 
@@ -735,7 +755,20 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		if in.PR > 0 {
 			out, err = sess.Runtime.Store.DiffPR(ctx, rel, in.PR)
 		} else {
-			out, err = sess.Runtime.Store.Diff(ctx, rel, in.A, in.B)
+			a, b := in.A, in.B
+			if a != "" {
+				a, err = sess.Runtime.Store.ResolveRevision(ctx, rel, a)
+				if err != nil {
+					return errorResult(err)
+				}
+			}
+			if b != "" {
+				b, err = sess.Runtime.Store.ResolveRevision(ctx, rel, b)
+				if err != nil {
+					return errorResult(err)
+				}
+			}
+			out, err = sess.Runtime.Store.Diff(ctx, rel, a, b)
 		}
 		if err != nil {
 			return errorResult(err)
@@ -846,6 +879,9 @@ func codePathMatches(symbolPath, filter string) bool {
 }
 
 func missingRequired(ctx context.Context, s *runtime.Session, area string) []string {
+	if area == "" {
+		return nil
+	}
 	o, err := s.Manager.Overlay(ctx, area)
 	if err != nil {
 		o = nil
@@ -856,8 +892,12 @@ func missingRequired(ctx context.Context, s *runtime.Session, area string) []str
 			present[d.Path] = true
 		}
 	}
+	required := s.Repo.Docs.Required
+	if len(required) == 0 {
+		required = []string{"README.md", "architecture.md"}
+	}
 	var missing []string
-	for _, req := range s.Repo.Docs.Required {
+	for _, req := range required {
 		rel := store.JoinArea(area, req)
 		if o != nil {
 			if o.States[rel] == changeset.DocStateDeleted || !present[rel] {

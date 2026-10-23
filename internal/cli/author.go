@@ -198,9 +198,9 @@ func (a *App) newCmd() *cobra.Command {
 				return err
 			}
 			if problems, err := docrules.ValidateMarkdown(rel, content); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: generated document is invalid: %v\n", err)
+				return fmt.Errorf("generated document is invalid: %w", err)
 			} else if len(problems) > 0 {
-				fmt.Fprintf(os.Stderr, "warning: generated document is invalid: %s\n", problems[0].Message)
+				return fmt.Errorf("generated document is invalid: %s", problems[0].Message)
 			}
 			if s.Runtime.Store.ExistsPath(rel) {
 				return fmt.Errorf("%s already exists in main; use `docsync edit`", rel)
@@ -280,9 +280,9 @@ func (a *App) adrNewCmd() *cobra.Command {
 				return err
 			}
 			if problems, err := docrules.ValidateMarkdown(rel, content); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: generated ADR is invalid: %v\n", err)
+				return fmt.Errorf("generated ADR is invalid: %w", err)
 			} else if len(problems) > 0 {
-				fmt.Fprintf(os.Stderr, "warning: generated ADR is invalid: %s\n", problems[0].Message)
+				return fmt.Errorf("generated ADR is invalid: %s", problems[0].Message)
 			}
 			if changesetID == "" {
 				if _, err := s.Manager.EnsureNamed(context.Background(), area, "ADR: "+title); err != nil {
@@ -382,6 +382,8 @@ func inferTemplate(rel string) string {
 		return "runbook"
 	case strings.Contains(rel, "/flows/"):
 		return "flow"
+	case strings.Contains(rel, "/standards/"):
+		return "standard"
 	case strings.HasSuffix(rel, "architecture.md"):
 		return "architecture"
 	case strings.HasSuffix(rel, "README.md"):

@@ -23,4 +23,8 @@ func TestManagedBodyPreservesHumanText(t *testing.T) {
 	if !strings.Contains(updated, "org/patterns/b.md") || strings.Contains(updated, "org/patterns/a.md") {
 		t.Fatalf("managed file list not replaced: %s", updated)
 	}
+	withTrailer := ManagedBody(updated, "cs-1", "org/patterns", []string{"org/patterns/b.md"}, "Docsync-Source: agent:mcp")
+	if !strings.Contains(withTrailer, "Docsync-Source: agent:mcp") {
+		t.Fatalf("trailer missing: %s", withTrailer)
+	}
 }

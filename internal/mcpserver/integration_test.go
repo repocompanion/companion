@@ -180,6 +180,16 @@ last_reviewed: 2026-01-01
 	if ctxOut["structure"] == nil {
 		t.Fatal("docs_get_context did not return the canonical structure")
 	}
+	missing, _ := ctxOut["missing_required"].([]any)
+	foundArchitecture := false
+	for _, item := range missing {
+		if item == "projects/acme/api/architecture.md" {
+			foundArchitecture = true
+		}
+	}
+	if !foundArchitecture {
+		t.Fatalf("context did not report the default required architecture doc: %v", missing)
+	}
 	refsOut := call("docs_validate_code_refs", map[string]any{})
 	refsSummary, _ := refsOut["summary"].(map[string]any)
 	if refsSummary["valid_paths"].(float64) < 1 || refsSummary["stale_refs"].(float64) < 1 {
@@ -289,6 +299,23 @@ last_reviewed: 2026-01-01
 	})
 	if mmdPatch["ok"] != true {
 		t.Fatalf("mmd patch failed: %v", mmdPatch)
+	}
+	unifiedContent := "---\nid: unified\nkind: flow\ntitle: Unified\nstatus: approved\nowners: [tester]\nlast_reviewed: 2026-01-01\n---\n# Patch me\n"
+	unifiedWrite := call("docs_write", map[string]any{"path": "flows/unified.md", "content": unifiedContent})
+	if unifiedWrite["ok"] != true {
+		t.Fatalf("unified write failed: %v", unifiedWrite)
+	}
+	unifiedRead := call("docs_read", map[string]any{"path": "flows/unified.md"})
+	unifiedDiff := "--- a/projects/acme/api/flows/unified.md\n+++ b/projects/acme/api/flows/unified.md\n@@ -9,1 +9,1 @@\n-# Patch me\n+# Unified patched\n"
+	unifiedPatch := call("docs_patch", map[string]any{
+		"path": "flows/unified.md", "base_rev": unifiedRead["hash"], "unified_diff": unifiedDiff,
+	})
+	if unifiedPatch["ok"] != true {
+		t.Fatalf("unified patch failed: %v", unifiedPatch)
+	}
+	unifiedRead = call("docs_read", map[string]any{"path": "flows/unified.md"})
+	if !strings.Contains(unifiedRead["content"].(string), "# Unified patched") {
+		t.Fatalf("unified patch content = %v", unifiedRead["content"])
 	}
 	mainMmdRead := call("docs_read", map[string]any{"path": "flows/main.mmd"})
 	mmdDelete := call("docs_delete", map[string]any{"path": "flows/main.mmd", "base_rev": mainMmdRead["hash"]})

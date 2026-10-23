@@ -63,6 +63,9 @@ type Client struct {
 
 	statusMu    sync.Mutex
 	statusCache map[int]cachedPRStatus
+
+	reviewMu    sync.Mutex
+	reviewCache map[int]cachedReviewers
 }
 
 // NewFromRemote builds a client for a GitHub remote. It never fails just
@@ -411,7 +414,7 @@ const bodyBegin = "<!-- docsync:begin -->"
 const bodyEnd = "<!-- docsync:end -->"
 
 // ManagedBody preserves human-written text outside the managed marker block.
-func ManagedBody(existing, changesetID, area string, files []string) string {
+func ManagedBody(existing, changesetID, area string, files []string, trailers ...string) string {
 	var b strings.Builder
 	b.WriteString(bodyBegin)
 	b.WriteString("\n")
@@ -420,6 +423,12 @@ func ManagedBody(existing, changesetID, area string, files []string) string {
 	b.WriteString("Docsync-Files:\n")
 	for _, f := range files {
 		fmt.Fprintf(&b, "- `%s`\n", f)
+	}
+	for _, trailer := range trailers {
+		if strings.TrimSpace(trailer) != "" {
+			b.WriteString(strings.TrimSpace(trailer))
+			b.WriteString("\n")
+		}
 	}
 	b.WriteString(bodyEnd)
 	managed := b.String()

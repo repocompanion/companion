@@ -46,20 +46,18 @@ func (a *App) lintCmd() *cobra.Command {
 				}
 				target = rt.Store
 			}
-			var res *lint.Result
-			var err error
-			if all {
-				res, err = lint.Run(target)
-			} else {
-				sess, serr := a.session()
-				if serr != nil {
-					return serr
-				}
-				if sess.Context.ProjectArea() == "" {
+			sess, serr := a.session()
+			if serr != nil {
+				return serr
+			}
+			dir := ""
+			if !all {
+				dir = sess.Context.ProjectArea()
+				if dir == "" {
 					return fmt.Errorf("project is unresolved; use --all or pass --project")
 				}
-				res, err = lint.RunDir(target, sess.Context.ProjectArea())
 			}
+			res, err := lint.RunDirWithCodeRefs(context.Background(), target, dir, sess.Context.RepoRoot, sess.Context.Project)
 			if err != nil {
 				return err
 			}

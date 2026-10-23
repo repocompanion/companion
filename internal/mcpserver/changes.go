@@ -110,15 +110,16 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		New string `json:"new"`
 	}
 	type patchIn struct {
-		Path    string      `json:"path"`
-		Edits   []patchEdit `json:"edits"`
-		BaseRev string      `json:"base_rev"`
-		Area    string      `json:"area,omitempty"`
-		Project string      `json:"project,omitempty"`
+		Path        string      `json:"path"`
+		Edits       []patchEdit `json:"edits,omitempty"`
+		UnifiedDiff string      `json:"unified_diff,omitempty" jsonschema:"optional single-file unified diff; use either edits or unified_diff"`
+		BaseRev     string      `json:"base_rev"`
+		Area        string      `json:"area,omitempty"`
+		Project     string      `json:"project,omitempty"`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "docs_patch",
-		Description: "Apply targeted find/replace edits to an existing doc and commit locally. Enforces frontmatter and canonical paths; prefer this over whole-file replacement.",
+		Description: "Apply targeted find/replace edits or a single-file unified diff to an existing doc and commit locally. Enforces frontmatter and canonical paths; prefer this over whole-file replacement.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in patchIn) (*mcp.CallToolResult, any, error) {
 		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
@@ -134,11 +135,32 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		if err := validAgentWritePath(in.Path); err != nil {
 			return errorResult(err)
 		}
+		rel := store.RelativeToArea(area, in.Path)
+		if in.UnifiedDiff != "" {
+			if len(in.Edits) > 0 {
+				return errorResult(errors.New("provide either edits or unified_diff, not both"))
+			}
+			c, err := sess.Manager.ApplyPatchFile(ctx, area, rel, in.BaseRev, in.UnifiedDiff, "agent:mcp")
+			if err != nil {
+				var bre *changeset.BaseRevError
+				if errors.As(err, &bre) {
+					hash, _ := sess.Runtime.Store.Hash(ctx, bre.Path, bre.Content)
+					return textResult(map[string]any{
+						"ok": false, "error": "base_rev_required_or_stale",
+						"path": bre.Path, "base_rev": hash, "latest_content": bre.Content,
+					})
+				}
+				return errorResult(err)
+			}
+			return textResult(map[string]any{"ok": true, "changeset": c, "pending_sync": true})
+		}
+		if len(in.Edits) == 0 {
+			return errorResult(errors.New("edits or unified_diff is required"))
+		}
 		edits := make([]changeset.Edit, 0, len(in.Edits))
 		for _, e := range in.Edits {
 			edits = append(edits, changeset.Edit{Old: e.Old, New: e.New})
 		}
-		rel := store.RelativeToArea(area, in.Path)
 		current, _, rerr := sess.Manager.ReadFile(ctx, area, rel)
 		if rerr != nil {
 			return errorResult(rerr)

@@ -1579,7 +1579,7 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 		res.Change, res.Pending = c, true
 		return res, &PendingError{Op: "refresh PR after push", Err: prErr}
 	}
-	body := forge.ManagedBody("", c.ID, c.Area, res.Files)
+	body := forge.ManagedBody("", c.ID, c.Area, res.Files, "Docsync-Source: "+source, "Docsync-Machine: "+machine(m.Ctx))
 	if pr == nil {
 		title := fmt.Sprintf("docs(%s): %s", path.Base(c.Area), c.Title)
 		pr, err = m.Forge.CreateDraft(ctx, title, c.Branch, "main", body)
@@ -1602,7 +1602,7 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 			_ = m.save(c)
 			return res, ErrFrozen
 		}
-		body = forge.ManagedBody(pr.Body, c.ID, c.Area, res.Files)
+		body = forge.ManagedBody(pr.Body, c.ID, c.Area, res.Files, "Docsync-Source: "+source, "Docsync-Machine: "+machine(m.Ctx))
 		if _, err := m.Forge.Update(ctx, pr.Number, pr.Title, body); err != nil {
 			res.Warning = "PR body update failed: " + err.Error()
 		}
@@ -1691,7 +1691,10 @@ func (m *Manager) SubmitWithOptions(ctx context.Context, idOrArea, summary, sour
 	if strings.TrimSpace(summary) != "" {
 		title = fmt.Sprintf("docs(%s): %s", path.Base(c.Area), summary)
 	}
-	body := forge.ManagedBody(pr.Body, c.ID, c.Area, res.Files)
+	body := forge.ManagedBody(pr.Body, c.ID, c.Area, res.Files,
+		"Docsync-Source: "+source,
+		"Docsync-Machine: "+machine(m.Ctx),
+	)
 	if _, err := m.Forge.Update(ctx, c.PR, title, body); err != nil {
 		return res, err
 	}
@@ -2270,6 +2273,94 @@ func (m *Manager) PatchFile(ctx context.Context, area, rel, baseRev string, edit
 	}
 	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
 		return state.Change{}, err
+	}
+	return c, nil
+}
+
+// ApplyPatchFile applies a single-file unified diff. It is intentionally
+// limited to the document being patched: --include prevents a supplied diff
+// from modifying other paths.
+func (m *Manager) ApplyPatchFile(ctx context.Context, area, rel, baseRev, diff, source string) (state.Change, error) {
+	unlock, err := m.lockArea(area)
+	if err != nil {
+		return state.Change{}, err
+	}
+	defer unlock()
+	c, err := m.Ensure(ctx, area)
+	if err != nil {
+		return state.Change{}, err
+	}
+	rel = store.RelativeToArea(area, rel)
+	clean, err := store.EnsureArea(area, rel)
+	if err != nil {
+		return state.Change{}, err
+	}
+	full, err := safeWorktreePath(c.Path, clean)
+	if err != nil {
+		return state.Change{}, err
+	}
+	original, err := os.ReadFile(full)
+	if err != nil {
+		return state.Change{}, err
+	}
+	if baseRev == "" {
+		return c, &BaseRevError{Path: clean, Content: string(original)}
+	}
+	hash, err := gitx.Run(ctx, c.Path, "hash-object", "--", full)
+	if err != nil {
+		return c, err
+	}
+	if hash != baseRev {
+		return c, &BaseRevError{Path: clean, Content: string(original)}
+	}
+	if strings.TrimSpace(diff) == "" {
+		return c, fmt.Errorf("unified diff is empty")
+	}
+	applyArgs := []string{"apply", "--check", "--whitespace=nowarn", "--include=" + clean}
+	if _, err := gitx.RunInput(ctx, c.Path, []byte(diff), applyArgs...); err != nil {
+		return c, fmt.Errorf("patch does not apply: %w", err)
+	}
+	applyArgs = []string{"apply", "--whitespace=nowarn", "--include=" + clean}
+	if _, err := gitx.RunInput(ctx, c.Path, []byte(diff), applyArgs...); err != nil {
+		return c, fmt.Errorf("apply patch: %w", err)
+	}
+	restore := func() {
+		if fi, lerr := os.Lstat(full); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+			_ = os.Remove(full)
+		}
+		_ = os.WriteFile(full, original, 0o644)
+	}
+	fi, lerr := os.Lstat(full)
+	if lerr != nil {
+		restore()
+		return c, fmt.Errorf("patch deleted or replaced %s; use docs_delete for removal", clean)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		restore()
+		return c, fmt.Errorf("patch produced a symlink at %s", clean)
+	}
+	updated, err := os.ReadFile(full)
+	if err != nil {
+		restore()
+		return c, fmt.Errorf("read patched %s: %w", clean, err)
+	}
+	if int64(len(updated)) > m.Cfg.MCP.MaxFileSize && m.Cfg.MCP.MaxFileSize > 0 {
+		restore()
+		return c, fmt.Errorf("file exceeds max size of %d bytes", m.Cfg.MCP.MaxFileSize)
+	}
+	if problems, verr := docrules.ValidateMarkdown(clean, string(updated)); verr != nil {
+		restore()
+		return c, verr
+	} else if len(problems) > 0 {
+		restore()
+		return c, fmt.Errorf("patched document is invalid: %s", problems[0].Message)
+	}
+	if err := m.validateUniqueIDLocked(ctx, c, area, clean, string(updated)); err != nil {
+		restore()
+		return c, err
+	}
+	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
+		return c, err
 	}
 	return c, nil
 }

@@ -94,6 +94,35 @@ func (s *Store) Log(ctx context.Context, rel string, wip bool) ([]Revision, erro
 	return revs, nil
 }
 
+// ResolveRevision maps friendly version labels such as v2 to the corresponding
+// merged commit. Other revisions pass through unchanged.
+func (s *Store) ResolveRevision(ctx context.Context, rel, rev string) (string, error) {
+	rev = strings.TrimSpace(rev)
+	if rev == "" {
+		return "", nil
+	}
+	lower := strings.ToLower(rev)
+	if strings.HasPrefix(lower, "v") {
+		n, err := strconv.Atoi(rev[1:])
+		if err == nil {
+			if n <= 0 {
+				return "", fmt.Errorf("invalid version %q", rev)
+			}
+			revs, err := s.Log(ctx, rel, false)
+			if err != nil {
+				return "", err
+			}
+			for _, r := range revs {
+				if r.Version == n {
+					return r.Commit, nil
+				}
+			}
+			return "", fmt.Errorf("version %d of %s not found", n, rel)
+		}
+	}
+	return rev, nil
+}
+
 // ReadAtRev reads a file from a git revision in the mirror.
 func (s *Store) ReadAtRev(ctx context.Context, rel, rev string) (string, error) {
 	clean, err := CleanRel(rel)

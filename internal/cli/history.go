@@ -52,6 +52,26 @@ func (a *App) logCmd() *cobra.Command {
 					return err
 				}
 			}
+			if s.Runtime.Forge != nil && s.Runtime.Forge.Available() {
+				reviewers := map[int]string{}
+				for i := range revs {
+					pr := revs[i].PR
+					if pr == 0 {
+						continue
+					}
+					name, ok := reviewers[pr]
+					if !ok {
+						names, err := s.Runtime.Forge.Approvals(ctx, pr)
+						if err == nil && len(names) > 0 {
+							name = strings.Join(names, ", ")
+						}
+						reviewers[pr] = name
+					}
+					if name != "" {
+						revs[i].Reviewer = name
+					}
+				}
+			}
 			if a.JSON {
 				return a.printJSON(revs)
 			}
@@ -109,6 +129,18 @@ func (a *App) diffCmd() *cobra.Command {
 				}
 				if len(args) == 2 {
 					bv = "HEAD"
+				}
+				if av != "" {
+					av, err = s.Runtime.Store.ResolveRevision(ctx, rel, av)
+					if err != nil {
+						return err
+					}
+				}
+				if bv != "" {
+					bv, err = s.Runtime.Store.ResolveRevision(ctx, rel, bv)
+					if err != nil {
+						return err
+					}
 				}
 				out, err = s.Runtime.Store.Diff(ctx, rel, av, bv)
 			}

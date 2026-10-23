@@ -2,6 +2,7 @@
 package lint
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bolacha/docsync/internal/codeindex"
 	"github.com/bolacha/docsync/internal/docrules"
 	"github.com/bolacha/docsync/internal/store"
 )
@@ -40,6 +42,31 @@ func RunDir(s *store.Store, dir string) (*Result, error) {
 		return nil, err
 	}
 	return runDocs(s, docs), nil
+}
+
+// RunDirWithCodeRefs runs the normal structural lint and, when a code root is
+// available, validates reference_impls paths and supported symbols. Code
+// reference errors become lint errors; advisory states become warnings.
+func RunDirWithCodeRefs(ctx context.Context, s *store.Store, dir, codeRoot, project string) (*Result, error) {
+	res, err := RunDir(s, dir)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(codeRoot) == "" {
+		return res, nil
+	}
+	docs, err := s.WalkDocs(dir)
+	if err != nil {
+		return nil, err
+	}
+	validated, err := codeindex.ValidateDocs(ctx, codeRoot, project, docs)
+	if err != nil {
+		return nil, err
+	}
+	for _, issue := range codeindex.Preflight(validated) {
+		res.add(issue.Level, issue.Doc, issue.Message)
+	}
+	return res, nil
 }
 
 // LoadDocs parses a specific set of store-relative files. Missing files are

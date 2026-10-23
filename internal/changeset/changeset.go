@@ -878,6 +878,141 @@ func AreaForPath(p string) (string, error) {
 	return docrules.AreaForPath(p)
 }
 
+func (m *Manager) branchBase(area string) string {
+	prefix := m.Cfg.Changesets.BranchPrefix
+	if prefix == "" {
+		prefix = "docs"
+	}
+	user := "user"
+	if m.Ctx != nil {
+		user = m.Ctx.BranchUser()
+	}
+	return fmt.Sprintf("%s/%s/%s", prefix, user, gitx.AreaSlug(area))
+}
+
+func (m *Manager) branchExists(ctx context.Context, branch string) bool {
+	if _, err := m.git(ctx, "rev-parse", "--verify", "refs/heads/"+branch); err == nil {
+		return true
+	}
+	if _, err := m.git(ctx, "rev-parse", "--verify", "refs/remotes/origin/"+branch); err == nil {
+		return true
+	}
+	return false
+}
+
+func (m *Manager) uniqueWorktreePath(base string) string {
+	for i := 1; ; i++ {
+		p := base
+		if i > 1 {
+			p = fmt.Sprintf("%s-%d", base, i)
+		}
+		if _, err := os.Stat(p); errors.Is(err, os.ErrNotExist) {
+			return p
+		}
+	}
+}
+
+func (m *Manager) uniqueWorktreePathOrError(base string) (string, error) {
+	for i := 1; i < 100; i++ {
+		p := base
+		if i > 1 {
+			p = fmt.Sprintf("%s-%d", base, i)
+		}
+		if _, err := os.Stat(p); errors.Is(err, os.ErrNotExist) {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("no free worktree path near %s", base)
+}
+
+// remoteBranchesForArea returns the current user's remote branches for an
+// area, newest first. The branch namespace already scopes this to the user, so
+// another author's branch is never selected here.
+func (m *Manager) remoteBranchesForArea(ctx context.Context, area string) ([]string, error) {
+	base := m.branchBase(area)
+	out, err := m.git(ctx, "for-each-ref", "--sort=-committerdate", "--format=%(refname)", "refs/remotes/origin/")
+	if err != nil {
+		return nil, err
+	}
+	prefix := "refs/remotes/origin/" + base + "/"
+	var branches []string
+	for _, ref := range strings.Split(out, "\n") {
+		ref = strings.TrimSpace(ref)
+		if !strings.HasPrefix(ref, prefix) {
+			continue
+		}
+		branch := strings.TrimPrefix(ref, "refs/remotes/origin/")
+		if branch != "" {
+			branches = append(branches, branch)
+		}
+	}
+	return branches, nil
+}
+
+func (m *Manager) reuseRemoteBranch(ctx context.Context, branch, area string) (state.Change, error) {
+	remoteRef := "refs/remotes/origin/" + branch
+	if _, err := m.git(ctx, "rev-parse", "--verify", remoteRef); err != nil {
+		return state.Change{}, fmt.Errorf("remote branch %s is not available: %w", branch, err)
+	}
+	localExists := false
+	if _, err := m.git(ctx, "rev-parse", "--verify", "refs/heads/"+branch); err == nil {
+		localExists = true
+	}
+	areaSlug := gitx.AreaSlug(area)
+	topic := gitx.Slug(path.Base(branch))
+	worktree := ""
+	if localExists {
+		if existing, werr := m.listWorktrees(ctx); werr == nil {
+			for _, wt := range existing {
+				if wt.branch == branch {
+					worktree = wt.path
+					break
+				}
+			}
+		}
+	}
+	if worktree == "" {
+		var err error
+		worktree, err = m.uniqueWorktreePathOrError(filepath.Join(m.Store.Changes, areaSlug+"--"+topic))
+		if err != nil {
+			return state.Change{}, err
+		}
+	}
+	if err := os.MkdirAll(m.Store.Changes, 0o755); err != nil {
+		return state.Change{}, err
+	}
+	if _, err := os.Stat(worktree); errors.Is(err, os.ErrNotExist) {
+		if localExists {
+			if _, err := m.git(ctx, "worktree", "add", worktree, branch); err != nil {
+				return state.Change{}, fmt.Errorf("attach remote branch %s: %w", branch, err)
+			}
+		} else {
+			if _, err := m.git(ctx, "worktree", "add", "-b", branch, worktree, remoteRef); err != nil {
+				return state.Change{}, fmt.Errorf("checkout remote branch %s: %w", branch, err)
+			}
+		}
+	}
+	now := time.Now().UTC()
+	c := state.Change{
+		ID:        state.NewID(),
+		Title:     titleFromBranch(branch),
+		Area:      area,
+		Branch:    branch,
+		Path:      worktree,
+		PRState:   "none",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := m.State.With(func(f *state.File) error {
+		f.Add(c)
+		f.SetActive(&f.Changes[len(f.Changes)-1])
+		return nil
+	}); err != nil {
+		return state.Change{}, err
+	}
+	return c, nil
+}
+
 func (m *Manager) Start(ctx context.Context, title, area string) (state.Change, error) {
 	area = strings.Trim(area, "/")
 	if err := ValidateArea(area); err != nil {
@@ -886,36 +1021,25 @@ func (m *Manager) Start(ctx context.Context, title, area string) (state.Change, 
 	if title == "" {
 		title = "docs updates"
 	}
-	prefix := m.Cfg.Changesets.BranchPrefix
-	if prefix == "" {
-		prefix = "docs"
-	}
-	user := m.Ctx.BranchUser()
 	areaSlug := gitx.AreaSlug(area)
 	topic := gitx.Slug(title)
-	branch := fmt.Sprintf("%s/%s/%s/%s", prefix, user, areaSlug, topic)
+	branch := m.branchBase(area) + "/" + topic
 	worktree := filepath.Join(m.Store.Changes, areaSlug+"--"+topic)
 
-	if _, err := m.git(ctx, "rev-parse", "--verify", "refs/heads/"+branch); err == nil {
+	// Also avoid colliding with a remote branch that has not been checked out
+	// locally yet. Otherwise a later sync could push a new changeset onto an
+	// old branch (and potentially an old PR).
+	if m.branchExists(ctx, branch) {
 		// `change start` means a new topic, not reattaching to an old branch.
 		for i := 2; i < 100; i++ {
 			candidate := fmt.Sprintf("%s-%d", branch, i)
-			if _, err := m.git(ctx, "rev-parse", "--verify", "refs/heads/"+candidate); err != nil {
+			if !m.branchExists(ctx, candidate) {
 				branch = candidate
 				break
 			}
 		}
 	}
-	for i := 1; ; i++ {
-		p := worktree
-		if i > 1 {
-			p = fmt.Sprintf("%s-%d", worktree, i)
-		}
-		if _, err := os.Stat(p); errors.Is(err, os.ErrNotExist) {
-			worktree = p
-			break
-		}
-	}
+	worktree = m.uniqueWorktreePath(worktree)
 	if err := os.MkdirAll(m.Store.Changes, 0o755); err != nil {
 		return state.Change{}, err
 	}
@@ -974,6 +1098,10 @@ func (m *Manager) EnsureNamed(ctx context.Context, area, title string) (state.Ch
 	if !auto {
 		return state.Change{}, fmt.Errorf("no active changeset for %s and changesets.auto_create is false", area)
 	}
+	// Refresh remote refs before discovery. Failure is non-fatal: an explicit
+	// write should still work offline and on a stale mirror.
+	m.ensureFetchRefspec(ctx)
+	_, _ = m.git(ctx, "fetch", "--prune", "origin")
 	if m.Forge != nil && m.Forge.Available() {
 		if prs, err := m.Forge.ListOpenForArea(ctx, area); err == nil && len(prs) > 0 {
 			if len(prs) == 1 {
@@ -982,6 +1110,39 @@ func (m *Manager) EnsureNamed(ctx context.Context, area, title string) (state.Ch
 				}
 			}
 			return state.Change{}, &JoinRequiredError{Area: area, PRs: prs}
+		}
+	}
+	// If there is exactly one of this user's remote branches for the area and
+	// no open PR to join, resume it instead of creating a second branch that
+	// would later collide on push. Closed/merged PR branches are not reused.
+	if branches, berr := m.remoteBranchesForArea(ctx, area); berr == nil {
+		reusable := branches
+		if m.Forge != nil && m.Forge.Available() {
+			login, _ := m.Forge.CurrentLogin(ctx)
+			reusable = nil
+			for _, branch := range branches {
+				pr, prErr := m.Forge.FindByBranch(ctx, branch)
+				if prErr != nil {
+					// An API failure should not make us reuse a possibly merged
+					// branch.
+					continue
+				}
+				if pr == nil {
+					reusable = append(reusable, branch)
+					continue
+				}
+				if pr.State == "open" {
+					if login != "" && strings.EqualFold(login, pr.User) {
+						return m.Join(ctx, pr.Number)
+					}
+					return state.Change{}, &JoinRequiredError{Area: area, PRs: []forge.PR{*pr}}
+				}
+				// Closed or merged branches are left for cleanup; start a new
+				// changeset rather than resurrecting an old PR.
+			}
+		}
+		if len(reusable) == 1 {
+			return m.reuseRemoteBranch(ctx, reusable[0], area)
 		}
 	}
 	if title == "" {

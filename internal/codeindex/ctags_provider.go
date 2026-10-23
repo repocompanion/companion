@@ -15,7 +15,7 @@ import (
 	"github.com/bolacha/docsync/internal/gitx"
 )
 
-const ctagsIndexVersion = "universal-ctags-v1"
+const ctagsIndexVersion = "universal-ctags-v2"
 
 type CtagsProvider struct {
 	Binary      string
@@ -120,6 +120,9 @@ func (p *CtagsProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot,
 			}
 		}
 		rel = filepath.ToSlash(filepath.Clean(rel))
+		if !p.SupportsPath(rel) {
+			continue
+		}
 		qualified := tag.Name
 		if tag.Scope != "" {
 			qualified = tag.Scope + "." + tag.Name

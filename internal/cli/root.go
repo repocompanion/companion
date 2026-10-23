@@ -250,6 +250,13 @@ func (a *App) statusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			reconciliation, reconcileErr := s.Manager.ReconcileState(context.Background())
+			if reconcileErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: reconcile state: %v\n", reconcileErr)
+			}
+			for _, warning := range reconciliation.Warnings {
+				fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+			}
 			rt, _ := a.runtime()
 			rev, ct, _ := rt.Store.MirrorRev(context.Background())
 			type row struct {
@@ -289,7 +296,7 @@ func (a *App) statusCmd() *cobra.Command {
 			if a.JSON {
 				return a.printJSON(map[string]any{
 					"mirror": rt.Store.Mirror, "rev": rev, "commit_time": ct,
-					"changesets": rows,
+					"changesets": rows, "state_reconciliation": reconciliation,
 				})
 			}
 			fmt.Printf("mirror %s (%s)\n", shortSHA(rev), humanAge(time.Since(ct)))

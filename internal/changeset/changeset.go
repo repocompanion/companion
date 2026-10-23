@@ -474,6 +474,322 @@ func (m *Manager) List() ([]state.Change, error) {
 	return out, nil
 }
 
+// StateReconciliation describes a cache rebuild against real worktrees.
+type StateReconciliation struct {
+	Added    int      `json:"added"`
+	Updated  int      `json:"updated"`
+	Removed  int      `json:"removed"`
+	Rebuilt  bool     `json:"rebuilt"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+type worktreeInfo struct {
+	path   string
+	branch string
+}
+
+// ReconcileState rebuilds the local state cache from Git worktrees. It is
+// deliberately safe when state.json is missing or corrupt: the worktrees are
+// the source of truth, while state is only a cache.
+func (m *Manager) ReconcileState(ctx context.Context) (StateReconciliation, error) {
+	var result StateReconciliation
+	old, err := m.load()
+	if err != nil {
+		return result, err
+	}
+	worktrees, err := m.listWorktrees(ctx)
+	if err != nil {
+		return result, err
+	}
+
+	byPath := map[string]int{}
+	byBranch := map[string]int{}
+	for i, c := range old.Changes {
+		if c.Path != "" {
+			byPath[canonicalPath(c.Path)] = i
+		}
+		if c.Branch != "" {
+			byBranch[c.Branch] = i
+		}
+	}
+
+	seen := map[int]bool{}
+	kept := make([]state.Change, 0, len(worktrees))
+	now := time.Now().UTC()
+	for _, wt := range worktrees {
+		idx, ok := byPath[canonicalPath(wt.path)]
+		if !ok {
+			idx, ok = byBranch[wt.branch]
+		}
+		if ok {
+			c := old.Changes[idx]
+			c.Path = wt.path
+			c.Branch = wt.branch
+			if c.Area == "" {
+				area, aerr := m.areaForWorktree(ctx, wt.path, wt.branch)
+				if aerr != nil {
+					result.Warnings = append(result.Warnings, fmt.Sprintf("changeset %s: %v", c.ID, aerr))
+					continue
+				}
+				c.Area = area
+			}
+			if c.Title == "" {
+				c.Title = titleFromBranch(wt.branch)
+			}
+			if c.PRState == "" {
+				c.PRState = "none"
+			}
+			if c.CreatedAt.IsZero() {
+				c.CreatedAt = worktreeModTime(wt.path, now)
+			}
+			if c.UpdatedAt.IsZero() {
+				c.UpdatedAt = c.CreatedAt
+			}
+			kept = append(kept, c)
+			seen[idx] = true
+			result.Updated++
+			continue
+		}
+
+		area, aerr := m.areaForWorktree(ctx, wt.path, wt.branch)
+		if aerr != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("worktree %s: %v", wt.path, aerr))
+			continue
+		}
+		modTime := worktreeModTime(wt.path, now)
+		kept = append(kept, state.Change{
+			ID:        state.NewID(),
+			Title:     titleFromBranch(wt.branch),
+			Area:      area,
+			Branch:    wt.branch,
+			Path:      wt.path,
+			PRState:   "none",
+			CreatedAt: modTime,
+			UpdatedAt: modTime,
+		})
+		result.Added++
+	}
+	result.Removed = len(old.Changes) - len(seen)
+
+	// Refresh PR metadata when GitHub is available. Local state remains usable
+	// when the token is missing or the API is temporarily unavailable.
+	for i := range kept {
+		if err := m.refreshPR(ctx, &kept[i]); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("refresh PR for %s: %v", kept[i].ID, err))
+		}
+	}
+
+	// Preserve active selections that still point at a surviving, open
+	// changeset. Otherwise choose the newest open changeset for each area.
+	active := map[string]string{}
+	for area, id := range old.Active {
+		for _, c := range kept {
+			if c.ID == id && c.IsOpen() {
+				active[area] = id
+				break
+			}
+		}
+	}
+	latest := map[string]state.Change{}
+	for _, c := range kept {
+		if !c.IsOpen() || active[c.Area] != "" {
+			continue
+		}
+		if prev, ok := latest[c.Area]; !ok || c.UpdatedAt.After(prev.UpdatedAt) {
+			latest[c.Area] = c
+		}
+	}
+	for area, c := range latest {
+		active[area] = c.ID
+	}
+
+	result.Rebuilt = result.Added > 0 || result.Removed > 0
+	if err := m.State.With(func(f *state.File) error {
+		f.Changes = kept
+		f.Active = active
+		return nil
+	}); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (m *Manager) listWorktrees(ctx context.Context) ([]worktreeInfo, error) {
+	out, err := m.git(ctx, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	var worktrees []worktreeInfo
+	var current worktreeInfo
+	flush := func() {
+		if current.path != "" && current.branch != "" && m.isChangesWorktree(current.path) {
+			worktrees = append(worktrees, current)
+		}
+		current = worktreeInfo{}
+	}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r")
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			current.path = strings.TrimPrefix(line, "worktree ")
+		case strings.HasPrefix(line, "branch refs/heads/"):
+			current.branch = strings.TrimPrefix(line, "branch refs/heads/")
+		case line == "detached":
+			current.branch = ""
+		}
+	}
+	flush()
+	return worktrees, nil
+}
+
+func (m *Manager) isChangesWorktree(p string) bool {
+	changes := canonicalPath(m.Store.Changes)
+	if changes == "" || changes == "." {
+		return false
+	}
+	target := canonicalPath(p)
+	rel, err := filepath.Rel(changes, target)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
+// canonicalPath makes paths comparable across Git worktree output and state.
+// On macOS, for example, Git may report /private/var/... while the state file
+// contains /var/...; both resolve to the same worktree.
+func canonicalPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		p = resolved
+	}
+	return filepath.Clean(p)
+}
+
+func (m *Manager) areaForWorktree(ctx context.Context, worktree, branch string) (string, error) {
+	changed, err := m.changedPaths(ctx, state.Change{Path: worktree})
+	if err != nil {
+		changed = nil
+	}
+	areas := map[string]int{}
+	addArea := func(p string) {
+		if area, aerr := docrules.AreaForPath(p); aerr == nil {
+			areas[area]++
+		}
+	}
+	for p := range changed {
+		addArea(p)
+	}
+	if len(areas) == 0 {
+		docs, werr := store.WalkDocsAt(worktree, "")
+		if werr != nil {
+			return "", werr
+		}
+		for _, d := range docs {
+			addArea(d.Path)
+		}
+	}
+	if len(areas) == 1 {
+		for area := range areas {
+			return area, nil
+		}
+	}
+	if len(areas) > 1 {
+		if slug := branchAreaSlug(branch); slug != "" {
+			var matches []string
+			for area := range areas {
+				if gitx.AreaSlug(area) == slug {
+					matches = append(matches, area)
+				}
+			}
+			if len(matches) == 1 {
+				return matches[0], nil
+			}
+			// An empty new changeset contains all main documents, so the
+			// worktree itself may not identify the target area. The branch
+			// slug can still match the current project/team context.
+			if m.Ctx != nil {
+				for _, candidate := range []string{m.Ctx.ProjectArea(), m.Ctx.TeamArea(), "org"} {
+					if candidate != "" && gitx.AreaSlug(candidate) == slug {
+						return candidate, nil
+					}
+				}
+			}
+		}
+		var best string
+		bestCount := 0
+		tied := false
+		for area, count := range areas {
+			switch {
+			case count > bestCount:
+				best, bestCount, tied = area, count, false
+			case count == bestCount:
+				tied = true
+			}
+		}
+		if !tied && best != "" {
+			return best, nil
+		}
+	}
+	return "", fmt.Errorf("cannot determine area from worktree %s", worktree)
+}
+
+func branchAreaSlug(branch string) string {
+	parts := strings.Split(strings.Trim(branch, "/"), "/")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[len(parts)-2]
+}
+
+func titleFromBranch(branch string) string {
+	base := path.Base(strings.Trim(branch, "/"))
+	if base == "" || base == "." || base == "/" {
+		return "recovered changeset"
+	}
+	title := strings.TrimSpace(strings.ReplaceAll(base, "-", " "))
+	if title == "" {
+		return "recovered changeset"
+	}
+	return strings.ToUpper(title[:1]) + title[1:]
+}
+
+func worktreeModTime(path string, fallback time.Time) time.Time {
+	if fi, err := os.Stat(path); err == nil {
+		return fi.ModTime().UTC()
+	}
+	return fallback
+}
+
+func (m *Manager) refreshPR(ctx context.Context, c *state.Change) error {
+	if m.Forge == nil || !m.Forge.Available() {
+		return nil
+	}
+	var pr *forge.PR
+	var err error
+	if c.PR > 0 {
+		pr, err = m.Forge.Get(ctx, c.PR)
+	} else {
+		pr, err = m.Forge.FindByBranch(ctx, c.Branch)
+	}
+	if err != nil {
+		return err
+	}
+	if pr == nil {
+		return nil
+	}
+	c.PR = pr.Number
+	c.PRState = pr.StateName()
+	c.Frozen = c.PRState == "ready"
+	return nil
+}
+
 // Resolve finds a changeset by ID or, when the argument is empty, by the
 // active area. An empty argument with multiple active changesets is an error;
 // docsync must not guess.

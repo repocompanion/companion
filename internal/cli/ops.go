@@ -278,7 +278,7 @@ func (a *App) registryAddRepoCmd() *cobra.Command {
 }
 
 func (a *App) doctorCmd() *cobra.Command {
-	var online bool
+	var online, repair bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check git, store, auth, mirror and state",
@@ -329,6 +329,22 @@ func (a *App) doctorCmd() *cobra.Command {
 					n = len(st.Changes)
 				}
 				add("state", err == nil, fmt.Sprintf("%d changesets", n))
+				if repair {
+					s, serr := a.session()
+					if serr != nil {
+						add("state repair", false, serr.Error())
+					} else {
+						rec, rerr := s.Manager.ReconcileState(context.Background())
+						msg := fmt.Sprintf("added %d, updated %d, removed %d", rec.Added, rec.Updated, rec.Removed)
+						if len(rec.Warnings) > 0 {
+							msg += fmt.Sprintf(", %d warnings", len(rec.Warnings))
+						}
+						if rerr != nil {
+							msg += ": " + rerr.Error()
+						}
+						add("state repair", rerr == nil, msg)
+					}
+				}
 			}
 			if online {
 				out, err := gitx.Run(context.Background(), "", "ls-remote", "--heads", rt.Store.Remote, "main")
@@ -349,6 +365,7 @@ func (a *App) doctorCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&online, "online", false, "also test SSH reachability")
+	cmd.Flags().BoolVar(&repair, "repair", false, "rebuild state.json from local worktrees")
 	return cmd
 }
 

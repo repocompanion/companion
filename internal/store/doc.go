@@ -14,10 +14,13 @@ import (
 )
 
 type ReferenceImpl struct {
-	Repo   string `yaml:"repo" json:"repo"`
-	Path   string `yaml:"path" json:"path"`
-	Ref    string `yaml:"ref,omitempty" json:"ref,omitempty"`
-	Commit string `yaml:"commit,omitempty" json:"commit,omitempty"`
+	Repo        string `yaml:"repo" json:"repo"`
+	Path        string `yaml:"path" json:"path"`
+	Symbol      string `yaml:"symbol,omitempty" json:"symbol,omitempty"`
+	Kind        string `yaml:"kind,omitempty" json:"kind,omitempty"`
+	Ref         string `yaml:"ref,omitempty" json:"ref,omitempty"`
+	Commit      string `yaml:"commit,omitempty" json:"commit,omitempty"`
+	Fingerprint string `yaml:"fingerprint,omitempty" json:"fingerprint,omitempty"`
 }
 
 type Frontmatter struct {

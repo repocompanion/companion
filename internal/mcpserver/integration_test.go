@@ -51,6 +51,9 @@ id: readme
 kind: project-doc
 title: Acme API
 status: approved
+reference_impls:
+  - repo: acme/api
+    path: projects/acme/api/README.md
 ---
 # Acme API
 `)
@@ -173,6 +176,11 @@ last_reviewed: 2026-01-01
 	}
 	if ctxOut["structure"] == nil {
 		t.Fatal("docs_get_context did not return the canonical structure")
+	}
+	refsOut := call("docs_validate_code_refs", map[string]any{})
+	refsSummary, _ := refsOut["summary"].(map[string]any)
+	if refsSummary["valid_paths"].(float64) < 1 {
+		t.Fatalf("code refs were not validated: %v", refsOut)
 	}
 	rootCtx, _ := ctxOut["context"].(map[string]any)
 	if rootCtx["repo_root"] != "" {

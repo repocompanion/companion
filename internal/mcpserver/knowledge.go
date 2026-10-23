@@ -20,10 +20,13 @@ import (
 )
 
 type refIn struct {
-	Repo   string `json:"repo"`
-	Path   string `json:"path"`
-	Ref    string `json:"ref,omitempty" jsonschema:"branch or tag; prefer main"`
-	Commit string `json:"commit,omitempty"`
+	Repo        string `json:"repo"`
+	Path        string `json:"path"`
+	Symbol      string `json:"symbol,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	Ref         string `json:"ref,omitempty" jsonschema:"branch or tag; prefer main"`
+	Commit      string `json:"commit,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 func registerKnowledgeTools(s *mcp.Server, p *provider) {
@@ -127,7 +130,10 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 			if ref == "" && r.Commit == "" {
 				ref = "main"
 			}
-			refs = append(refs, map[string]any{"repo": r.Repo, "path": r.Path, "ref": ref, "commit": r.Commit})
+			refs = append(refs, map[string]any{
+				"repo": r.Repo, "path": r.Path, "symbol": r.Symbol, "kind": r.Kind,
+				"ref": ref, "commit": r.Commit, "fingerprint": r.Fingerprint,
+			})
 		}
 		languages := in.Languages
 		if len(languages) == 0 {

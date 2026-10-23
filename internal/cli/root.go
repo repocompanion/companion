@@ -84,6 +84,7 @@ func NewRootCommand() *cobra.Command {
 		a.blameCmd(),
 		a.restoreCmd(),
 		a.lintCmd(),
+		a.validateCodeRefsCmd(),
 		a.importCmd(),
 		a.configCmd(),
 		a.registryCmd(),

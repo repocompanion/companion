@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bolacha/docsync/internal/changeset"
+	"github.com/bolacha/docsync/internal/codeindex"
 	"github.com/bolacha/docsync/internal/guidance"
 	"github.com/bolacha/docsync/internal/runtime"
 	"github.com/bolacha/docsync/internal/search"
@@ -399,6 +400,56 @@ func registerContextTools(s *mcp.Server, p *provider) {
 			hits[i].State = o.States[hits[i].Path]
 		}
 		return textResult(map[string]any{"query": in.Query, "hits": hits, "count": len(hits), "total": total, "next_cursor": next})
+	})
+
+	type validateRefsIn struct {
+		Path    string `json:"path,omitempty" jsonschema:"optional document path or subtree filter"`
+		Scope   string `json:"scope,omitempty" jsonschema:"project|team|org|all; default project"`
+		Project string `json:"project,omitempty"`
+	}
+	addTool(s, &mcp.Tool{
+		Name:        "docs_validate_code_refs",
+		Description: "Validate reference_impls paths at their resolved ref and provide a git-grep symbol fallback. Symbol/semantic checks depend on available providers.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in validateRefsIn) (*mcp.CallToolResult, any, error) {
+		sess, err := p.session(ctx, req, in.Project)
+		if err != nil {
+			return errorResult(err)
+		}
+		if err := requireStore(sess); err != nil {
+			return errorResult(err)
+		}
+		dir, err := scopeDir(sess, in.Scope, "")
+		if err != nil {
+			return errorResult(err)
+		}
+		o, err := sess.Manager.OverlayDir(ctx, dir)
+		if err != nil {
+			return errorResult(err)
+		}
+		docs := o.Docs
+		if strings.TrimSpace(in.Path) != "" {
+			rel, err := resolvePath(sess, in.Path)
+			if err != nil {
+				return errorResult(err)
+			}
+			filtered := make([]*store.Doc, 0, 1)
+			for _, d := range docs {
+				if d.Path == rel {
+					filtered = append(filtered, d)
+				}
+			}
+			docs = filtered
+		}
+		validated, err := codeindex.ValidateDocs(ctx, sess.Context.RepoRoot, sess.Context.Project, docs)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(map[string]any{
+			"repo_root": sess.Context.RepoRoot,
+			"project":   sess.Context.Project,
+			"docs":      validated,
+			"summary":   codeindex.Summarize(validated),
+		})
 	})
 
 	type readIn struct {

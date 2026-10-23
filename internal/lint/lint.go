@@ -102,9 +102,6 @@ func runDocs(s *store.Store, docs []*store.Doc) *Result {
 			}
 		}
 		for _, r := range f.ReferenceImpls {
-			if r.Repo == "" || r.Path == "" {
-				res.add("error", d.Path, "reference_impls entries require repo and path")
-			}
 			if r.Commit != "" && r.Ref != "" && r.Ref != "main" {
 				res.add("warning", d.Path, "reference impl pins a feature-branch ref; prefer ref: main")
 			}

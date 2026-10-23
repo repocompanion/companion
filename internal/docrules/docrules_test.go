@@ -70,3 +70,38 @@ func TestValidateDoc(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateReferences(t *testing.T) {
+	valid := store.ReferenceImpl{
+		Repo: "acme/api", Path: "internal/consumer.go", Symbol: "Consumer.Run",
+		Kind: "method", Fingerprint: "sha256:" + strings.Repeat("a", 64),
+	}
+	cases := []struct {
+		name string
+		ref  store.ReferenceImpl
+		want string
+	}{
+		{name: "valid", ref: valid},
+		{name: "missing repo", ref: store.ReferenceImpl{Path: "x.go"}, want: "requires repo"},
+		{name: "unknown kind", ref: func() store.ReferenceImpl { r := valid; r.Kind = "module"; return r }(), want: "unknown kind"},
+		{name: "bad fingerprint", ref: func() store.ReferenceImpl { r := valid; r.Fingerprint = "sha1:abc"; return r }(), want: "fingerprint must be sha256"},
+		{name: "symbol whitespace", ref: func() store.ReferenceImpl { r := valid; r.Symbol = "Consumer Run"; return r }(), want: "must not contain whitespace"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			problems := ValidateReferences("projects/acme/api/patterns/x.md", []store.ReferenceImpl{tc.ref})
+			if tc.want == "" {
+				if len(problems) != 0 {
+					t.Fatalf("unexpected problems: %+v", problems)
+				}
+				return
+			}
+			for _, p := range problems {
+				if strings.Contains(p.Message, tc.want) {
+					return
+				}
+			}
+			t.Fatalf("problems %+v do not contain %q", problems, tc.want)
+		})
+	}
+}

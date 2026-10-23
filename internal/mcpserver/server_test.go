@@ -41,7 +41,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 		"docs_change_submit", "docs_change_sync", "docs_delete", "docs_diff", "docs_get_context",
 		"docs_get_guidance", "docs_history", "docs_list", "docs_move", "docs_patch", "docs_propose_pattern",
 		"docs_pull", "docs_read", "docs_record_decision", "docs_review_comments",
-		"docs_scaffold_project", "docs_search", "docs_set_context", "docs_write",
+		"docs_scaffold_project", "docs_search", "docs_set_context", "docs_validate_code_refs", "docs_write",
 	}
 	if len(names) != len(want) {
 		t.Fatalf("got %d tools (%v), want %d", len(names), names, len(want))

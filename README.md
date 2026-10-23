@@ -21,6 +21,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
 - **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
+- **Reference validation**: validate `reference_impls` paths in the current repo and report grep-only symbol checks as unverified until a semantic provider is available.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -150,6 +151,7 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync blame <doc>` | Line authorship |
 | `docsync restore <doc> <version>` | Open a changeset that restores a version |
 | `docsync lint [--store DIR]` | Local subset of store CI |
+| `docsync validate-code-refs [--all]` | Validate reference_impls paths and grep symbols |
 | `docsync config get\|set\|init-repo` | Manage user and repo config |
 | `docsync registry add-repo <repo> --team <t>` | Update the org registry via PR |
 | `docsync doctor [--online]` | Check git, store, auth and mirror |
@@ -229,7 +231,8 @@ with `git mv` and validates the destination.
 ## MCP tools
 
 Read: `docs_get_context`, `docs_get_guidance`, `docs_list`, `docs_search`,
-`docs_read`, `docs_history`, `docs_diff`, `docs_pull`.
+`docs_read`, `docs_history`, `docs_diff`, `docs_pull`,
+`docs_validate_code_refs`.
 
 Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
 `docs_move`, `docs_delete`, `docs_record_decision`, `docs_propose_pattern`, `docs_scaffold_project`,
@@ -239,6 +242,19 @@ Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
 Agents can never merge. `docs_change_submit` lints changed documents and keeps
 the PR as a draft on errors; only a human can use `docsync change submit
 --skip-lint`. A human merges the PR under GitHub branch protection.
+
+## Code reference validation
+
+```bash
+docsync validate-code-refs
+docsync validate-code-refs --path projects/acme/api/patterns/sqs.md
+docsync validate-code-refs --all --json
+```
+
+Paths are checked at the resolved `ref` (default `main`) in the current repo.
+References to other repos are reported as `external`; unresolved refs are
+`unverified`. Symbol checks use a semantic provider when available; currently
+they fall back to `git grep` and are explicitly marked `unverified`.
 
 ## Configuration
 
@@ -321,5 +337,8 @@ manually against a sandbox repository.
 - Image/binary additions are a human CLI/editor action, not an MCP write.
 - Import copies files; it does not yet preserve Git history with `git mv`.
 - `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
+- Code-reference symbol validation is currently a `git grep` fallback; Go and
+  multi-language semantic providers are not implemented yet.
+- Fingerprints are validated for format but drift detection is not implemented yet.
 
 See `PLAN.md` for the full design and roadmap.

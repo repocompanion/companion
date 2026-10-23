@@ -48,6 +48,12 @@ var ValidStatuses = map[string]bool{
 }
 
 var adrFile = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*\.md$`)
+var fingerprintRE = regexp.MustCompile(`^sha256:[a-fA-F0-9]{64}$`)
+
+var ValidReferenceKinds = map[string]bool{
+	"function": true, "method": true, "type": true, "package": true,
+	"route": true, "job": true, "migration": true, "config": true, "test": true,
+}
 
 // Structure describes the canonical project layout for agents.
 type Structure struct {
@@ -205,6 +211,34 @@ func ValidateDoc(rel string, f store.Frontmatter) []Problem {
 	out := ValidateFrontmatter(rel, f)
 	if msg := LayoutError(rel, f.Kind); msg != "" {
 		out = append(out, Problem{Path: rel, Message: msg})
+	}
+	out = append(out, ValidateReferences(rel, f.ReferenceImpls)...)
+	return out
+}
+
+// ValidateReferences checks the reference_impls shape. Path existence and
+// symbol resolution are intentionally handled by the code index because they
+// require a code checkout and optional providers.
+func ValidateReferences(rel string, refs []store.ReferenceImpl) []Problem {
+	var out []Problem
+	add := func(msg string) { out = append(out, Problem{Path: rel, Message: msg}) }
+	for i, r := range refs {
+		where := fmt.Sprintf("reference_impls[%d]", i)
+		if strings.TrimSpace(r.Repo) == "" {
+			add(where + " requires repo")
+		}
+		if strings.TrimSpace(r.Path) == "" {
+			add(where + " requires path")
+		}
+		if r.Kind != "" && !ValidReferenceKinds[r.Kind] {
+			add(fmt.Sprintf("%s has unknown kind %q", where, r.Kind))
+		}
+		if r.Symbol != "" && strings.ContainsAny(r.Symbol, " \t\r\n") {
+			add(where + " symbol must not contain whitespace")
+		}
+		if r.Fingerprint != "" && !fingerprintRE.MatchString(r.Fingerprint) {
+			add(where + " fingerprint must be sha256:<64 hex characters>")
+		}
 	}
 	return out
 }

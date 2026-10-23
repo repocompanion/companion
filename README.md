@@ -180,7 +180,7 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync lint [--store DIR]` | Local subset of store CI |
 | `docsync validate-code-refs [--all]` | Validate reference_impls paths, symbols and drift |
 | `docsync stale [--all]` | Show documents with stale code references |
-| `docsync code map [--path DIR]` | Index available code symbols in the current repo |
+| `docsync code map [--path DIR] [--kind KIND]` | Index available code symbols in the current repo |
 | `docsync code find <symbol>` | Resolve a code symbol |
 | `docsync config get\|set\|init-repo` | Manage user and repo config |
 | `docsync registry add-repo <repo> --team <t>` | Update the org registry via PR |
@@ -292,7 +292,8 @@ reference_impls:
 
 Path validation works for every language. Symbol validation is provider-based:
 
-- native Go provider: `go/packages` / `go/ast`;
+- native Go provider: `go/packages` / `go/ast` for packages, functions, methods,
+  types, routes, jobs, migrations, config fields and tests;
 - optional `universal-ctags`: syntax symbols for many languages;
 - otherwise: `git grep`, reported as `unverified`.
 
@@ -317,6 +318,9 @@ docsync stale --all --json
 
 # Inspect the current repo's symbol map.
 docsync code map --path internal/consumer
+
+# Filter by kind: function, method, type, route, job, migration, config, test.
+docsync code map --kind config
 
 # Resolve a specific symbol.
 docsync code find Consumer.Run --path internal/consumer
@@ -467,8 +471,10 @@ manually against a sandbox repository.
 - LSP, SCIP and LSIF are parked in `idea.md`; they are not part of the current CLI.
 - Code-reference validation is not yet part of `docsync lint`; it runs during
   `change submit` and through `validate-code-refs`.
-- Go indexing currently covers packages, functions, methods, types and basic
-  route calls; jobs/queues, migrations, config and tests are pending.
+- Go indexing covers packages, functions, methods, types, basic routes,
+  job-like functions, config fields, migrations and test functions. The
+  job/config/migration heuristics are intentionally conservative and can miss
+  framework-specific patterns.
 - ctags is syntax-only and language coverage depends on the installed
   Universal Ctags build.
 - Drift warnings are advisory. Submit warns but never blocks on drift.

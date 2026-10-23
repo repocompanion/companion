@@ -100,7 +100,7 @@ func (a *App) codeMapCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&codePath, "path", "", "file or directory filter")
-	cmd.Flags().StringVar(&kind, "kind", "", "function|method|type|route")
+	cmd.Flags().StringVar(&kind, "kind", "", "function|method|type|route|job|migration|config|test")
 	cmd.Flags().IntVar(&limit, "limit", 200, "maximum symbols")
 	return cmd
 }

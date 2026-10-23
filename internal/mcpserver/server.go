@@ -524,7 +524,7 @@ func registerContextTools(s *mcp.Server, p *provider) {
 
 	type codeMapIn struct {
 		Path    string `json:"path,omitempty" jsonschema:"optional file or directory filter"`
-		Kind    string `json:"kind,omitempty" jsonschema:"optional function|method|type|route"`
+		Kind    string `json:"kind,omitempty" jsonschema:"optional function|method|type|route|job|migration|config|test"`
 		Limit   int    `json:"limit,omitempty" jsonschema:"maximum symbols; default 200"`
 		Project string `json:"project,omitempty"`
 	}

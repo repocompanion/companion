@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/printer"
 	"go/token"
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -94,6 +96,9 @@ func (p *GoProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot, er
 		}
 		snapshot.Symbols = append(snapshot.Symbols, indexPackage(root, req.Repo, req.Commit, pkg)...)
 	}
+	snapshot.Symbols = append(snapshot.Symbols, indexTestFiles(ctx, root, req.Repo, req.Commit)...)
+	snapshot.Symbols = append(snapshot.Symbols, indexMigrationFiles(ctx, root, req.Repo, req.Commit)...)
+	snapshot.Symbols = dedupeSymbols(snapshot.Symbols)
 	if len(snapshot.Symbols) == 0 {
 		return nil, ErrUnsupported
 	}
@@ -182,6 +187,11 @@ func indexPackage(root, repo, commit string, pkg *packages.Package) []Symbol {
 			continue
 		}
 		rel = filepath.ToSlash(rel)
+		if strings.HasSuffix(rel, "_test.go") {
+			// Test files are indexed separately so they work even when the
+			// package cannot be loaded with all test dependencies.
+			continue
+		}
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch node := n.(type) {
 			case *ast.FuncDecl:
@@ -191,6 +201,8 @@ func indexPackage(root, repo, commit string, pkg *packages.Package) []Symbol {
 				if recv := receiverName(node.Recv); recv != "" {
 					qualified = pkg.Name + "." + recv + "." + name
 					kind = "method"
+				} else if isJobFunc(name, rel, pkg.Name) {
+					kind = "job"
 				}
 				out = append(out, Symbol{
 					Provider: "go", Repo: repo, Commit: commit, Package: pkg.Name, Name: name,
@@ -205,6 +217,7 @@ func indexPackage(root, repo, commit string, pkg *packages.Package) []Symbol {
 					Line:      pkg.Fset.Position(node.Pos()).Line,
 					Signature: "type " + node.Name.Name,
 				})
+				out = append(out, configFieldSymbols(pkg.Fset, pkg.Name, repo, commit, rel, node)...)
 			case *ast.CallExpr:
 				if route, ok := routeName(node); ok {
 					out = append(out, Symbol{
@@ -219,6 +232,183 @@ func indexPackage(root, repo, commit string, pkg *packages.Package) []Symbol {
 	}
 	for i := range out {
 		out[i].Fingerprint = symbolFingerprint(out[i])
+	}
+	return out
+}
+
+func isJobFunc(name, rel, pkgName string) bool {
+	if !isJobPath(rel, pkgName) {
+		return false
+	}
+	for _, prefix := range []string{"Handle", "Consume", "Process", "Run", "Start", "Listen", "Poll", "Dispatch"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isJobPath(rel, pkgName string) bool {
+	needles := []string{"worker", "job", "queue", "consumer", "handler", "subscriber", "scheduler"}
+	pkg := strings.ToLower(pkgName)
+	for _, n := range needles {
+		if strings.Contains(pkg, n) {
+			return true
+		}
+	}
+	pathLower := strings.ToLower("/" + filepath.ToSlash(rel) + "/")
+	for _, n := range needles {
+		if strings.Contains(pathLower, "/"+n) {
+			return true
+		}
+	}
+	return false
+}
+
+func configFieldSymbols(fset *token.FileSet, pkgName, repo, commit, rel string, typeSpec *ast.TypeSpec) []Symbol {
+	structType, ok := typeSpec.Type.(*ast.StructType)
+	if !ok || structType.Fields == nil {
+		return nil
+	}
+	var out []Symbol
+	for _, field := range structType.Fields.List {
+		if field.Tag == nil || len(field.Names) == 0 {
+			continue
+		}
+		tag := reflect.StructTag(strings.Trim(field.Tag.Value, "`"))
+		summary := configTagSummary(tag)
+		if summary == "" {
+			continue
+		}
+		for _, name := range field.Names {
+			out = append(out, Symbol{
+				Provider: "go", Repo: repo, Commit: commit, Package: pkgName, Name: name.Name,
+				Qualified: pkgName + "." + typeSpec.Name.Name + "." + name.Name, Kind: "config",
+				Path: rel, Line: fset.Position(name.Pos()).Line, Signature: summary,
+			})
+		}
+	}
+	return out
+}
+
+func configTagSummary(tag reflect.StructTag) string {
+	var parts []string
+	for _, key := range []string{"yaml", "json", "env", "mapstructure", "toml"} {
+		value, ok := tag.Lookup(key)
+		if !ok || value == "" || value == "-" {
+			continue
+		}
+		parts = append(parts, key+":"+value)
+	}
+	return strings.Join(parts, " ")
+}
+
+func indexTestFiles(ctx context.Context, root, repo, commit string) []Symbol {
+	files, err := gitFiles(ctx, root, "*_test.go")
+	if err != nil {
+		return nil
+	}
+	var out []Symbol
+	fset := token.NewFileSet()
+	for _, rel := range files {
+		file, err := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(rel)), nil, 0)
+		if err != nil {
+			continue
+		}
+		pkgName := file.Name.Name
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil || !isTestName(fn.Name.Name) {
+				continue
+			}
+			out = append(out, Symbol{
+				Provider: "go", Repo: repo, Commit: commit, Package: pkgName,
+				Name: fn.Name.Name, Qualified: pkgName + "." + fn.Name.Name, Kind: "test",
+				Path: rel, Line: fset.Position(fn.Pos()).Line, Signature: signature(fset, fn.Type),
+			})
+		}
+	}
+	return out
+}
+
+func isTestName(name string) bool {
+	for _, prefix := range []string{"Test", "Benchmark", "Fuzz", "Example"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func indexMigrationFiles(ctx context.Context, root, repo, commit string) []Symbol {
+	files, err := gitFiles(ctx, root, "*.sql", "*.go")
+	if err != nil {
+		return nil
+	}
+	var out []Symbol
+	for _, rel := range files {
+		if !isMigrationPath(rel) {
+			continue
+		}
+		name := migrationName(rel)
+		if name == "" {
+			continue
+		}
+		out = append(out, Symbol{
+			Provider: "go", Repo: repo, Commit: commit, Package: "migration",
+			Name: name, Qualified: "migration." + name, Kind: "migration",
+			Path: rel, Line: 1, Signature: "migration " + name,
+		})
+	}
+	return out
+}
+
+func gitFiles(ctx context.Context, root string, patterns ...string) ([]string, error) {
+	args := []string{"ls-files", "-z", "--"}
+	args = append(args, patterns...)
+	out, err := gitx.Run(ctx, root, args...)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, rel := range strings.Split(out, "\x00") {
+		if rel == "" {
+			continue
+		}
+		files = append(files, filepath.ToSlash(rel))
+	}
+	return files, nil
+}
+
+func isMigrationPath(rel string) bool {
+	lower := strings.ToLower("/" + filepath.ToSlash(rel) + "/")
+	for _, marker := range []string{"/migrations/", "/migration/", "/db/migrate/", "/database/migrations/", "/sql/migrations/", "/schema/migrations/"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func migrationName(rel string) string {
+	base := path.Base(rel)
+	ext := path.Ext(base)
+	base = strings.TrimSuffix(base, ext)
+	base = strings.TrimSuffix(base, ".up")
+	base = strings.TrimSuffix(base, ".down")
+	return base
+}
+
+func dedupeSymbols(in []Symbol) []Symbol {
+	seen := map[string]bool{}
+	out := make([]Symbol, 0, len(in))
+	for _, s := range in {
+		key := s.Provider + "\x00" + s.Path + "\x00" + s.Qualified + "\x00" + s.Kind
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, s)
 	}
 	return out
 }

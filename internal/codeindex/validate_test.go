@@ -243,3 +243,55 @@ func TestDriftDetection(t *testing.T) {
 		t.Fatalf("summary = %+v", s)
 	}
 }
+
+func TestGoProviderIndexesJobsConfigMigrationsAndTests(t *testing.T) {
+	root := testRepo(t)
+	ctx := context.Background()
+	write := func(rel, content string) {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("workers/consumer.go", "package workers\n\ntype Worker struct{}\n\nfunc HandleMessage() {}\nfunc (w Worker) Run() {}\n")
+	write("workers/consumer_test.go", "package workers\n\nimport \"testing\"\n\nfunc TestHandleMessage(t *testing.T) {}\n")
+	write("internal/config.go", "package internal\n\ntype Config struct {\n\tPort int `yaml:\"port\"`\n\tName string `json:\"name\"`\n\tIgnored string\n}\n")
+	write("migrations/001_init.sql", "CREATE TABLE users (id INT);\n")
+	if _, err := gitx.Run(ctx, root, "add", "."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitx.Run(ctx, root, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "index extras"); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := (&GoProvider{CacheDir: t.TempDir()}).Index(ctx, IndexRequest{Repo: "acme/api", Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"job:workers.HandleMessage":      false,
+		"method:workers.Worker.Run":      false,
+		"config:internal.Config.Port":    false,
+		"config:internal.Config.Name":    false,
+		"migration:migration.001_init":   false,
+		"test:workers.TestHandleMessage": false,
+	}
+	for _, sym := range snap.Symbols {
+		key := sym.Kind + ":" + sym.Qualified
+		if _, ok := want[key]; ok {
+			want[key] = true
+		}
+	}
+	for key, found := range want {
+		if !found {
+			t.Fatalf("missing symbol %s in %+v", key, snap.Symbols)
+		}
+	}
+	for _, sym := range snap.Symbols {
+		if sym.Qualified == "internal.Config.Ignored" {
+			t.Fatalf("untagged field was indexed as config: %+v", sym)
+		}
+	}
+}

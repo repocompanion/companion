@@ -21,7 +21,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
 - **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
-- **Code context**: validate `reference_impls` paths/symbols, resolve symbols with the Go provider and optional ctags/LSP, detect advisory drift, and expose `code map`, `code find` and `stale` commands plus MCP tools.
+- **Code context**: validate `reference_impls` paths/symbols, resolve symbols with Go, optional ctags/LSP and durable SCIP indexes, detect advisory drift, and expose `code map`, `code find`, `code refs` and `stale` commands plus MCP tools.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -85,16 +85,92 @@ does not provide JSON output and is not used.
 
 ### SCIP index
 
-SCIP is a durable external index format. Generate an index with your language's
-SCIP indexer, then point docsync at it:
+SCIP is a durable external index format. There is no single universal SCIP
+binary; install the indexer for each language you need.
+
+Generate `index.scip` from the repository root, then either place it there or
+point docsync at it:
 
 ```bash
+# Option A: index.scip in the repository root
+scip-go
+
+# Option B: explicit path
 export DOCSYNC_SCIP_INDEX=/absolute/path/to/index.scip
-# or place index.scip at the repository root
 ```
 
-When present, SCIP is used for durable definitions and references before LSP or
-ctags. It is not generated automatically. LSIF is not implemented yet.
+Supported indexers:
+
+#### Go
+
+```bash
+go install github.com/scip-code/scip-go/cmd/scip-go@latest
+cd path/to/repo
+scip-go
+```
+
+#### TypeScript / JavaScript
+
+```bash
+npm install -g @sourcegraph/scip-typescript
+cd path/to/repo
+scip-typescript index
+# JavaScript only:
+scip-typescript index --infer-tsconfig
+```
+
+#### Python
+
+```bash
+npm install -g @sourcegraph/scip-python
+cd path/to/repo
+scip-python index . --project-name=my-project
+```
+
+Run it inside the virtual environment that contains the project’s dependencies.
+
+#### Java / Kotlin
+
+The Java/Kotlin indexer is distributed as a Docker image or a Java launcher:
+
+```bash
+docker run --rm -v "$PWD:/sources" \
+  ghcr.io/scip-code/scip-java:latest scip-java index
+```
+
+See the [`scip-java` getting-started guide](https://github.com/sourcegraph/scip-java/blob/main/docs/getting-started.md)
+for the Coursier/fat-jar installation options.
+
+#### Rust
+
+```bash
+rustup component add rust-analyzer
+cd path/to/repo
+rust-analyzer scip .
+```
+
+`scip-rust` also provides a wrapper and Docker image if preferred.
+
+#### PHP
+
+There is no maintained Sourcegraph SCIP indexer for PHP in the current
+ecosystem. Use the PHP LSP server or ctags for PHP symbols.
+
+Once `index.scip` exists, docsync uses it automatically for durable definitions
+and references, before LSP or ctags. It is not generated automatically by
+docsync, and LSIF is not implemented yet.
+
+Verify:
+
+```bash
+docsync doctor
+docsync code map
+docsync code find handler --path app.ts
+docsync code refs handler --path app.ts --include-declaration
+```
+
+MCP uses the same index when the MCP server starts with `DOCSYNC_SCIP_INDEX` in
+its environment.
 
 ### LSP language servers
 
@@ -385,9 +461,9 @@ The same operations are available as read-only tools:
 |---|---|
 | `docs_validate_code_refs` | Validate paths, symbols, providers and drift |
 | `docs_stale` | Return documents with stale references |
-| `docs_code_map` | Return bounded Go/ctags symbols for the current repo |
+| `docs_code_map` | Return bounded Go/ctags/SCIP symbols for the current repo |
 | `docs_code_find` | Resolve a symbol live through available providers |
-| `docs_code_refs` | Find references through an available LSP provider |
+| `docs_code_refs` | Find references through SCIP or an available LSP provider |
 
 Examples:
 

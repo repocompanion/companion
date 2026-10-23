@@ -161,20 +161,8 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		for _, e := range in.Edits {
 			edits = append(edits, changeset.Edit{Old: e.Old, New: e.New})
 		}
-		current, _, rerr := sess.Manager.ReadFile(ctx, area, rel)
-		if rerr != nil {
-			return errorResult(rerr)
-		}
-		final := current
-		for _, e := range edits {
-			if e.Old == "" || !strings.Contains(final, e.Old) {
-				return errorResult(fmt.Errorf("patch block not found in %s", rel))
-			}
-			final = strings.Replace(final, e.Old, e.New, 1)
-		}
-		if err := validateAgentDoc(rel, final); err != nil {
-			return errorResult(err)
-		}
+		// PatchFile validates the final document under the area lock, against
+		// the same worktree file it patches.
 		c, err := sess.Manager.PatchFile(ctx, area, rel, in.BaseRev, edits, "agent:mcp")
 		if err != nil {
 			var bre *changeset.BaseRevError

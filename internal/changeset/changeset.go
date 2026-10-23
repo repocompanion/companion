@@ -2083,8 +2083,9 @@ func (m *Manager) WriteFile(ctx context.Context, area, rel, content, baseRev, so
 	if _, err := os.Stat(full); err == nil {
 		exists = true
 	}
+	var current []byte
 	if exists {
-		current, err := os.ReadFile(full)
+		current, err = os.ReadFile(full)
 		if err != nil {
 			return state.Change{}, false, err
 		}
@@ -2114,12 +2115,31 @@ func (m *Manager) WriteFile(ctx context.Context, area, rel, content, baseRev, so
 		return c, false, err
 	}
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		m.rollbackFile(ctx, c, clean, full, current, exists)
 		return c, false, err
 	}
 	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
+		m.rollbackFile(ctx, c, clean, full, current, exists)
 		return c, false, err
 	}
 	return c, true, nil
+}
+
+// rollbackFile restores a path after a rejected write: the previous content is
+// written back (or the new file removed) and the path is unstaged. Without it a
+// failed commit, such as a secret-scan rejection, leaves the edit in the
+// worktree where it is readable through the overlay and blocks every later
+// commit in the changeset.
+func (m *Manager) rollbackFile(ctx context.Context, c state.Change, rel, full string, original []byte, existed bool) {
+	if fi, err := os.Lstat(full); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		_ = os.Remove(full)
+	}
+	if existed {
+		_ = os.WriteFile(full, original, 0o644)
+	} else {
+		_ = os.Remove(full)
+	}
+	_, _ = m.wt(ctx, c, "reset", "-q", "--", rel)
 }
 
 type BaseRevError struct {
@@ -2265,13 +2285,23 @@ func (m *Manager) PatchFile(ctx context.Context, area, rel, baseRev string, edit
 	if int64(len(content)) > m.Cfg.MCP.MaxFileSize && m.Cfg.MCP.MaxFileSize > 0 {
 		return state.Change{}, fmt.Errorf("file exceeds max size of %d bytes", m.Cfg.MCP.MaxFileSize)
 	}
+	if problems, err := docrules.ValidateMarkdown(clean, content); err != nil {
+		return state.Change{}, err
+	} else if len(problems) > 0 {
+		return state.Change{}, fmt.Errorf("patched document is invalid: %s", problems[0].Message)
+	}
+	if scanSecrets(content) {
+		return state.Change{}, fmt.Errorf("possible secret in %s; refusing to write", clean)
+	}
 	if err := m.validateUniqueIDLocked(ctx, c, area, clean, content); err != nil {
 		return state.Change{}, err
 	}
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		m.rollbackFile(ctx, c, clean, full, b, true)
 		return state.Change{}, err
 	}
 	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
+		m.rollbackFile(ctx, c, clean, full, b, true)
 		return state.Change{}, err
 	}
 	return c, nil
@@ -2324,12 +2354,7 @@ func (m *Manager) ApplyPatchFile(ctx context.Context, area, rel, baseRev, diff, 
 	if _, err := gitx.RunInput(ctx, c.Path, []byte(diff), applyArgs...); err != nil {
 		return c, fmt.Errorf("apply patch: %w", err)
 	}
-	restore := func() {
-		if fi, lerr := os.Lstat(full); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
-			_ = os.Remove(full)
-		}
-		_ = os.WriteFile(full, original, 0o644)
-	}
+	restore := func() { m.rollbackFile(ctx, c, clean, full, original, true) }
 	fi, lerr := os.Lstat(full)
 	if lerr != nil {
 		restore()
@@ -2355,43 +2380,19 @@ func (m *Manager) ApplyPatchFile(ctx context.Context, area, rel, baseRev, diff, 
 		restore()
 		return c, fmt.Errorf("patched document is invalid: %s", problems[0].Message)
 	}
+	if scanSecrets(string(updated)) {
+		restore()
+		return c, fmt.Errorf("possible secret in %s; refusing to write", clean)
+	}
 	if err := m.validateUniqueIDLocked(ctx, c, area, clean, string(updated)); err != nil {
 		restore()
 		return c, err
 	}
 	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
+		restore()
 		return c, err
 	}
 	return c, nil
-}
-
-// ReadFile reads a file from the active changeset or the main mirror.
-func (m *Manager) ReadFile(ctx context.Context, area, rel string) (string, string, error) {
-	c, err := m.Active(area)
-	if err == nil && c != nil {
-		rel = store.RelativeToArea(area, rel)
-		clean, err := store.EnsureArea(area, rel)
-		if err != nil {
-			return "", "", err
-		}
-		full, err := safeWorktreePath(c.Path, clean)
-		if err != nil {
-			return "", "", err
-		}
-		if b, err := os.ReadFile(full); err == nil {
-			return string(b), "changeset " + c.ID, nil
-		}
-	}
-	rel = store.RelativeToArea(area, rel)
-	clean, err := store.EnsureArea(area, rel)
-	if err != nil {
-		return "", "", err
-	}
-	b, err := m.Store.Read(clean)
-	if err != nil {
-		return "", "", err
-	}
-	return b, "main", nil
 }
 
 func safeWorktreePath(root, rel string) (string, error) {

@@ -156,6 +156,11 @@ func WalkDocsAt(root, dir string) ([]*Doc, error) {
 		if err != nil {
 			return nil
 		}
+		// Do not follow symlinks. A tracked symlink could otherwise expose a
+		// file outside the store to list/search/context and overlay reads.
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
 		name := d.Name()
 		if d.IsDir() {
 			if name == ".git" || name == ".docsync" || name == ".github" || name == "node_modules" {

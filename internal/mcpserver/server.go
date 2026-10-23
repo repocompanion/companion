@@ -323,7 +323,11 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		if err := requireStore(sess); err != nil {
 			return errorResult(err)
 		}
-		results, err := guidance.Lookup(sess.Runtime.Store, sess.Context, in.Task, in.Language, in.MaxResults)
+		o, err := sess.Manager.OverlayAll(ctx)
+		if err != nil {
+			return errorResult(err)
+		}
+		results, err := guidance.LookupDocs(o.Docs, sess.Context, in.Task, in.Language, in.MaxResults)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -653,7 +657,7 @@ func registerContextTools(s *mcp.Server, p *provider) {
 				"path": rel, "deleted": true, "content": "", "hash": "", "source": source, "state": docState,
 			})
 		}
-		hash, _ := sess.Runtime.Store.Hash(ctx, content)
+		hash, _ := sess.Runtime.Store.Hash(ctx, rel, content)
 		var pending []any
 		if area, err := changeset.AreaForPath(rel); err == nil && sess.Runtime.Forge != nil && sess.Runtime.Forge.Available() {
 			if prs, err := sess.Runtime.Forge.ListOpenForArea(ctx, area); err == nil {

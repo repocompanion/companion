@@ -221,7 +221,7 @@ func (a *App) catCmd() *cobra.Command {
 				}
 				return fmt.Errorf("%s is deleted in %s", rel, source)
 			}
-			hash, _ := s.Runtime.Store.Hash(ctx, content)
+			hash, _ := s.Runtime.Store.Hash(ctx, rel, content)
 			if a.JSON {
 				return a.printJSON(map[string]any{"path": rel, "content": content, "hash": hash, "source": source, "state": state})
 			}
@@ -309,7 +309,11 @@ func (a *App) guidanceCmd() *cobra.Command {
 			if len(a.Languages) > 0 {
 				lang = a.Languages[0]
 			}
-			results, err := guidance.Lookup(s.Runtime.Store, s.Context, strings.Join(args, " "), lang, maxResults)
+			o, err := s.Manager.OverlayAll(context.Background())
+			if err != nil {
+				return err
+			}
+			results, err := guidance.LookupDocs(o.Docs, s.Context, strings.Join(args, " "), lang, maxResults)
 			if err != nil {
 				return err
 			}

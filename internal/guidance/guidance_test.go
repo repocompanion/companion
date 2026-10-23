@@ -115,3 +115,35 @@ func TestApplyCodeContextExposesResolvedSymbols(t *testing.T) {
 		t.Fatalf("warnings = %+v", results[0].Warnings)
 	}
 }
+
+func TestLookupDocsIncludesPendingCandidates(t *testing.T) {
+	docs := []*store.Doc{
+		{
+			Path: "org/patterns/outbox.md",
+			Frontmatter: store.Frontmatter{
+				ID: "outbox", Kind: "pattern", Title: "Org outbox", Status: "approved",
+				Topics: []string{"outbox", "events"}, Languages: []string{"go"},
+			},
+			Body: "# Org outbox\n\nWrite events to an outbox.",
+		},
+		{
+			Path: "projects/acme/api/patterns/outbox.md",
+			Frontmatter: store.Frontmatter{
+				ID: "outbox", Kind: "pattern", Title: "Project outbox", Status: "proposed",
+				Topics: []string{"outbox", "events"}, Languages: []string{"go"},
+			},
+			Body: "# Project outbox\n\nUse the project outbox relay.",
+		},
+	}
+	ctx := &config.Context{Project: "acme/api"}
+	results, err := LookupDocs(docs, ctx, "implement an outbox relay in Go", "go", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) == 0 {
+		t.Fatal("no results")
+	}
+	if results[0].Path != "projects/acme/api/patterns/outbox.md" {
+		t.Fatalf("first result = %s, want pending project pattern", results[0].Path)
+	}
+}

@@ -78,6 +78,16 @@ var stopwords = map[string]bool{
 
 // Lookup returns ranked guidance for task. maxResults <= 0 means 5.
 func Lookup(s *store.Store, ctx *config.Context, task, language string, maxResults int) ([]Result, error) {
+	docs, err := s.WalkDocs("")
+	if err != nil {
+		return nil, err
+	}
+	return LookupDocs(docs, ctx, task, language, maxResults)
+}
+
+// LookupDocs ranks an already-loaded document set. Callers that have an active
+// changeset should pass the overlay documents so pending guidance is visible.
+func LookupDocs(docs []*store.Doc, ctx *config.Context, task, language string, maxResults int) ([]Result, error) {
 	if maxResults <= 0 {
 		maxResults = 5
 	}
@@ -90,36 +100,21 @@ func Lookup(s *store.Store, ctx *config.Context, task, language string, maxResul
 		lang = ctx.Languages[0]
 	}
 
-	scopes := []struct {
-		path string
-		rank int
-	}{
-		{"", 0},
-		{"", 1},
-		{"org", 2},
-	}
-	if ctx != nil {
-		scopes[0].path = ctx.ProjectArea()
-		scopes[1].path = ctx.TeamArea()
-	}
-	seenScope := map[string]bool{}
+	scopes := scopesFor(ctx)
 	var candidates []candidate
-	for _, sc := range scopes {
-		if sc.path == "" || seenScope[sc.path] {
+	for _, d := range docs {
+		if d == nil {
 			continue
 		}
-		seenScope[sc.path] = true
-		docs, err := s.WalkDocs(sc.path)
-		if err != nil {
-			return nil, err
+		if d.Frontmatter.Kind != "pattern" && d.Frontmatter.Kind != "adr" && d.Frontmatter.Kind != "standard" {
+			continue
 		}
-		for _, d := range docs {
-			if d.Frontmatter.Kind != "pattern" && d.Frontmatter.Kind != "adr" && d.Frontmatter.Kind != "standard" {
-				continue
-			}
-			score := scoreDoc(d, tokens, lang)
-			candidates = append(candidates, candidate{doc: d, scope: sc.path, scopeRank: sc.rank, score: float64(score)})
+		sc, ok := scopeForPath(d.Path, scopes)
+		if !ok {
+			continue
 		}
+		score := scoreDoc(d, tokens, lang)
+		candidates = append(candidates, candidate{doc: d, scope: sc.path, scopeRank: sc.rank, score: float64(score)})
 	}
 
 	// Build one BM25 index across the candidate set. The ranking is field
@@ -260,6 +255,38 @@ func Lookup(s *store.Store, ctx *config.Context, task, language string, maxResul
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+type scopeDef struct {
+	path string
+	rank int
+}
+
+func scopesFor(ctx *config.Context) []scopeDef {
+	var scopes []scopeDef
+	seen := map[string]bool{}
+	add := func(p string, rank int) {
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		scopes = append(scopes, scopeDef{path: p, rank: rank})
+	}
+	if ctx != nil {
+		add(ctx.ProjectArea(), 0)
+		add(ctx.TeamArea(), 1)
+	}
+	add("org", 2)
+	return scopes
+}
+
+func scopeForPath(p string, scopes []scopeDef) (scopeDef, bool) {
+	for _, sc := range scopes {
+		if p == sc.path || strings.HasPrefix(p, sc.path+"/") {
+			return sc, true
+		}
+	}
+	return scopeDef{}, false
 }
 
 // Enrich attaches validated code context to guidance results. It is a no-op

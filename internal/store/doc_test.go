@@ -1,6 +1,11 @@
 package store
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
 
 func TestParseDoc(t *testing.T) {
 	raw := `---
@@ -47,5 +52,32 @@ func TestParseDocWithoutFrontmatter(t *testing.T) {
 	}
 	if d.Frontmatter.ID != "" || d.Body != "# Hello\n" {
 		t.Fatalf("unexpected doc: %+v", d)
+	}
+}
+
+func TestWalkDocsAtSkipsSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation may require elevated privileges on Windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.md"), []byte("# secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "real.md"), []byte("# real\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(root, "linked.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked-dir")); err != nil {
+		t.Fatal(err)
+	}
+	docs, err := WalkDocsAt(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) != 1 || docs[0].Path != "real.md" {
+		t.Fatalf("docs = %+v, want only real.md", docs)
 	}
 }

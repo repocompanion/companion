@@ -294,7 +294,14 @@ func sortedDocs(byPath map[string]*store.Doc) []*store.Doc {
 }
 
 func (m *Manager) changedPaths(ctx context.Context, c state.Change) (map[string]string, error) {
-	out, err := m.wt(ctx, c, "diff", "--name-status", "--no-renames", "main...HEAD")
+	// Compare the working tree, including uncommitted edits, against the
+	// merge-base with main. Using main directly would incorrectly mark files
+	// added on main after this changeset branched as deleted.
+	base, err := m.wt(ctx, c, "merge-base", "main", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	out, err := m.wt(ctx, c, "diff", "--name-status", "--no-renames", base)
 	if err != nil {
 		return nil, err
 	}
@@ -314,6 +321,19 @@ func (m *Manager) changedPaths(ctx context.Context, c state.Change) (map[string]
 			continue
 		}
 		changed[p] = status[:1]
+	}
+
+	// git diff does not include untracked files. They are additions relative
+	// to the branch base, and the overlay must show new documents immediately
+	// after an editor creates them, before the next commit.
+	untracked, err := m.wt(ctx, c, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range strings.Split(untracked, "\x00") {
+		if p != "" {
+			changed[p] = "A"
+		}
 	}
 	return changed, nil
 }
@@ -344,6 +364,40 @@ func (m *Manager) ReadFileState(ctx context.Context, area, rel string) (content,
 		if d.Path == clean {
 			return d.Raw, source, state, nil
 		}
+	}
+
+	// The document walk only indexes Markdown. Other agent-writable files,
+	// notably .mmd diagrams, still need to be readable and need a tombstone
+	// when they are deleted. Derive their state from the same working-tree
+	// diff used by the overlay.
+	if c, aerr := m.Active(area); aerr == nil && c != nil {
+		if changed, cerr := m.changedPaths(ctx, *c); cerr == nil {
+			status := changed[clean]
+			if status == "D" {
+				return "", "changeset " + c.ID, DocStateDeleted, nil
+			}
+			if status != "" {
+				full, ferr := safeWorktreePath(c.Path, clean)
+				if ferr != nil {
+					return "", "", "", ferr
+				}
+				b, rerr := os.ReadFile(full)
+				if rerr != nil {
+					if errors.Is(rerr, os.ErrNotExist) {
+						return "", "changeset " + c.ID, DocStateDeleted, nil
+					}
+					return "", "", "", rerr
+				}
+				next := DocStateModified
+				if status == "A" {
+					next = DocStateAdded
+				}
+				return string(b), "changeset " + c.ID, next, nil
+			}
+		}
+	}
+	if b, rerr := m.Store.Read(clean); rerr == nil {
+		return string(b), "main", DocStateMain, nil
 	}
 	return "", source, state, fmt.Errorf("%s not found", clean)
 }
@@ -750,6 +804,114 @@ func scanSecrets(data string) bool {
 	return regexp.MustCompile(`(?i)(aws_secret_access_key\s*=|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})`).MatchString(data)
 }
 
+// scanPendingSecrets checks every path that would be included by `git add -A`.
+// `git status --porcelain` without -uall collapses an untracked directory to a
+// single directory entry, which cannot be read as a file; using -uall and
+// walking directories prevents a secret in an untracked folder from slipping
+// into a commit.
+func (m *Manager) scanPendingSecrets(ctx context.Context, c state.Change) error {
+	out, err := gitx.RunRaw(ctx, c.Path, "status", "--porcelain", "-z", "--untracked-files=all")
+	if err != nil {
+		return err
+	}
+	records := strings.Split(out, "\x00")
+	for i := 0; i < len(records); i++ {
+		rec := records[i]
+		if len(rec) < 4 {
+			continue
+		}
+		status := rec[:2]
+		rel := rec[3:]
+		// Rename/copy records carry a second path. Scan both sides; the old
+		// side may no longer exist, in which case the read is skipped.
+		if status[0] == 'R' || status[0] == 'C' {
+			if i+1 < len(records) {
+				i++
+				if records[i] != "" {
+					if err := scanWorktreePath(c.Path, records[i]); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		// Deleted paths have no contents to scan.
+		if status[0] == 'D' || status[1] == 'D' {
+			continue
+		}
+		if err := scanWorktreePath(c.Path, rel); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func scanWorktreePath(root, rel string) error {
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	fi, err := os.Lstat(full)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		// Git records the link target, not the linked file's content.
+		return nil
+	}
+	if fi.IsDir() {
+		return filepath.WalkDir(full, func(p string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() {
+				if d.Name() == ".git" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if d.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			b, readErr := os.ReadFile(p)
+			if readErr != nil {
+				return readErr
+			}
+			if scanSecrets(string(b)) {
+				return fmt.Errorf("possible secret in %s; refusing to commit", rel)
+			}
+			return nil
+		})
+	}
+	b, err := os.ReadFile(full)
+	if err != nil {
+		return err
+	}
+	if scanSecrets(string(b)) {
+		return fmt.Errorf("possible secret in %s; refusing to commit", rel)
+	}
+	return nil
+}
+
+func (m *Manager) scanStagedSecrets(ctx context.Context, c state.Change) error {
+	out, err := gitx.RunRaw(ctx, c.Path, "diff", "--cached", "--name-only", "--no-renames", "--diff-filter=ACMRT", "-z")
+	if err != nil {
+		return err
+	}
+	for _, rel := range strings.Split(out, "\x00") {
+		if rel == "" {
+			continue
+		}
+		b, err := gitx.RunRaw(ctx, c.Path, "show", ":"+rel)
+		if err != nil {
+			return fmt.Errorf("read staged %s: %w", rel, err)
+		}
+		if scanSecrets(b) {
+			return fmt.Errorf("possible secret in %s; refusing to commit", rel)
+		}
+	}
+	return nil
+}
+
 func (m *Manager) commitIfNeeded(ctx context.Context, c state.Change, source string) (bool, error) {
 	status, err := m.wt(ctx, c, "status", "--porcelain")
 	if err != nil {
@@ -758,21 +920,16 @@ func (m *Manager) commitIfNeeded(ctx context.Context, c state.Change, source str
 	if strings.TrimSpace(status) == "" {
 		return false, nil
 	}
-	for _, line := range strings.Split(status, "\n") {
-		if len(line) < 4 {
-			continue
-		}
-		rel := strings.TrimSpace(line[3:])
-		rel = strings.TrimPrefix(rel, "\"")
-		rel = strings.TrimSuffix(rel, "\"")
-		full := filepath.Join(c.Path, filepath.FromSlash(rel))
-		if b, err := os.ReadFile(full); err == nil {
-			if scanSecrets(string(b)) {
-				return false, fmt.Errorf("possible secret in %s; refusing to commit", rel)
-			}
-		}
+	if err := m.scanPendingSecrets(ctx, c); err != nil {
+		return false, err
 	}
 	if _, err := m.wt(ctx, c, "add", "-A"); err != nil {
+		return false, err
+	}
+	// Scan the index as well. Scanning only the working tree is not enough if
+	// a staged blob differs from the checkout (for example, an index-only or
+	// assume-unchanged entry).
+	if err := m.scanStagedSecrets(ctx, c); err != nil {
 		return false, err
 	}
 	short := path.Base(c.Area)
@@ -1598,6 +1755,9 @@ func (m *Manager) PatchFile(ctx context.Context, area, rel, baseRev string, edit
 		}
 		content = strings.Replace(content, e.Old, e.New, 1)
 	}
+	if int64(len(content)) > m.Cfg.MCP.MaxFileSize && m.Cfg.MCP.MaxFileSize > 0 {
+		return state.Change{}, fmt.Errorf("file exceeds max size of %d bytes", m.Cfg.MCP.MaxFileSize)
+	}
 	if err := m.validateUniqueIDLocked(ctx, c, area, clean, content); err != nil {
 		return state.Change{}, err
 	}
@@ -1656,6 +1816,9 @@ func safeWorktreePath(root, rel string) (string, error) {
 	if abs != rootAbs && !strings.HasPrefix(abs, rootAbs+string(os.PathSeparator)) {
 		return "", fmt.Errorf("path escapes the changeset: %s", rel)
 	}
+	if err := rejectSymlinkComponents(rootAbs, clean); err != nil {
+		return "", err
+	}
 	rootResolved, rerr := filepath.EvalSymlinks(rootAbs)
 	if rerr != nil {
 		rootResolved = rootAbs
@@ -1681,6 +1844,33 @@ func safeWorktreePath(root, rel string) (string, error) {
 		parent = next
 	}
 	return abs, nil
+}
+
+// rejectSymlinkComponents refuses any existing symlink in the path below the
+// worktree root. EvalSymlinks alone is not enough: a broken final symlink
+// fails resolution, but os.WriteFile would still follow it and create the
+// target outside the worktree.
+func rejectSymlinkComponents(root, rel string) error {
+	current := root
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if part == "" || part == "." {
+			continue
+		}
+		current = filepath.Join(current, filepath.FromSlash(part))
+		fi, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			// If this component does not exist, no later component can exist
+			// either. The caller will create the remaining directories/files.
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("path uses a symlink and is not allowed: %s", rel)
+		}
+	}
+	return nil
 }
 
 // Reconcile refreshes PR state from GitHub. It is used by status and cleanup.

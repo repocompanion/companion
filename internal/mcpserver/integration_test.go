@@ -68,6 +68,8 @@ last_reviewed: 2026-01-01
 ---
 # Legacy flow
 `)
+	write("projects/acme/api/notes.txt", "plain notes\n")
+	write("projects/acme/api/flows/main.mmd", "graph TD\n")
 	if out, err := gitx.Run(context.Background(), seed, "init", "-q", "-b", "main"); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
@@ -271,6 +273,40 @@ last_reviewed: 2026-01-01
 	if writeOut["ok"] != true {
 		t.Fatalf("write failed: %v", writeOut)
 	}
+	mmdOut := call("docs_write", map[string]any{
+		"path": "flows/diagram.mmd", "content": "graph TD\n  A --> B\n",
+	})
+	if mmdOut["ok"] != true {
+		t.Fatalf("mmd write failed: %v", mmdOut)
+	}
+	mmdRead := call("docs_read", map[string]any{"path": "flows/diagram.mmd"})
+	if mmdRead["content"] != "graph TD\n  A --> B\n" || mmdRead["state"] != "added" {
+		t.Fatalf("mmd read = %v", mmdRead)
+	}
+	mmdPatch := call("docs_patch", map[string]any{
+		"path": "flows/diagram.mmd", "base_rev": mmdRead["hash"],
+		"edits": []any{map[string]any{"old": "A --> B", "new": "A --> C"}},
+	})
+	if mmdPatch["ok"] != true {
+		t.Fatalf("mmd patch failed: %v", mmdPatch)
+	}
+	mainMmdRead := call("docs_read", map[string]any{"path": "flows/main.mmd"})
+	mmdDelete := call("docs_delete", map[string]any{"path": "flows/main.mmd", "base_rev": mainMmdRead["hash"]})
+	if mmdDelete["ok"] != true {
+		t.Fatalf("mmd delete failed: %v", mmdDelete)
+	}
+	mmdDeletedRead := call("docs_read", map[string]any{"path": "flows/main.mmd"})
+	if mmdDeletedRead["deleted"] != true || mmdDeletedRead["state"] != "deleted" {
+		t.Fatalf("mmd deleted read = %v", mmdDeletedRead)
+	}
+	notesRead := call("docs_read", map[string]any{"path": "notes.txt"})
+	errText = callError("docs_patch", map[string]any{
+		"path": "notes.txt", "base_rev": notesRead["hash"],
+		"edits": []any{map[string]any{"old": "plain notes", "new": "changed"}},
+	})
+	if !strings.Contains(errText, "may write or delete .md and .mmd") {
+		t.Fatalf("expected patch extension rejection, got %q", errText)
+	}
 	errText = callError("docs_write", map[string]any{
 		"path":    "flows/refund-copy.md",
 		"content": "---\nid: refund\nkind: flow\ntitle: Refund copy\nstatus: approved\nowners: [tester]\nlast_reviewed: 2026-01-01\n---\n# Refund copy\n",
@@ -388,6 +424,11 @@ last_reviewed: 2026-01-01
 	})
 	if patternAgain["existing"] != true || patternAgain["path"] != patternOut["path"] {
 		t.Fatalf("pattern was not idempotent: %v", patternAgain)
+	}
+	patternGuidance := call("docs_get_guidance", map[string]any{"task": "idempotent consumer"})
+	patternResults, _ := patternGuidance["results"].([]any)
+	if !hasPath(patternResults, patternOut["path"].(string)) {
+		t.Fatalf("pending pattern missing from guidance: %v", patternGuidance)
 	}
 	scaffoldOut := call("docs_scaffold_project", map[string]any{"project": "acme/new-service"})
 	if scaffoldOut["ok"] != true {

@@ -90,7 +90,7 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		if err != nil {
 			var bre *changeset.BaseRevError
 			if errors.As(err, &bre) {
-				hash, _ := sess.Runtime.Store.Hash(ctx, bre.Content)
+				hash, _ := sess.Runtime.Store.Hash(ctx, bre.Path, bre.Content)
 				return textResult(map[string]any{
 					"ok": false, "error": "base_rev_required_or_stale",
 					"path": bre.Path, "base_rev": hash, "latest_content": bre.Content,
@@ -98,7 +98,7 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 			}
 			return errorResult(err)
 		}
-		hash, _ := sess.Runtime.Store.Hash(ctx, in.Content)
+		hash, _ := sess.Runtime.Store.Hash(ctx, rel, in.Content)
 		return textResult(map[string]any{
 			"ok": true, "changed": changed, "changeset": c, "path": rel,
 			"base_rev": hash, "pending_sync": true,
@@ -131,6 +131,9 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		if !agentWritable(area) {
 			return errorResult(errors.New("org/ and teams/ writes must use docs_record_decision or docs_propose_pattern"))
 		}
+		if err := validAgentWritePath(in.Path); err != nil {
+			return errorResult(err)
+		}
 		edits := make([]changeset.Edit, 0, len(in.Edits))
 		for _, e := range in.Edits {
 			edits = append(edits, changeset.Edit{Old: e.Old, New: e.New})
@@ -154,7 +157,7 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		if err != nil {
 			var bre *changeset.BaseRevError
 			if errors.As(err, &bre) {
-				hash, _ := sess.Runtime.Store.Hash(ctx, bre.Content)
+				hash, _ := sess.Runtime.Store.Hash(ctx, bre.Path, bre.Content)
 				return textResult(map[string]any{
 					"ok": false, "error": "base_rev_required_or_stale",
 					"path": bre.Path, "base_rev": hash, "latest_content": bre.Content,
@@ -199,7 +202,7 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		if err != nil {
 			var bre *changeset.BaseRevError
 			if errors.As(err, &bre) {
-				hash, _ := sess.Runtime.Store.Hash(ctx, bre.Content)
+				hash, _ := sess.Runtime.Store.Hash(ctx, bre.Path, bre.Content)
 				return textResult(map[string]any{
 					"ok": false, "error": "base_rev_required_or_stale",
 					"path": bre.Path, "base_rev": hash, "latest_content": bre.Content,
@@ -239,7 +242,7 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		if err != nil {
 			var bre *changeset.BaseRevError
 			if errors.As(err, &bre) {
-				hash, _ := sess.Runtime.Store.Hash(ctx, bre.Content)
+				hash, _ := sess.Runtime.Store.Hash(ctx, bre.Path, bre.Content)
 				return textResult(map[string]any{
 					"ok": false, "error": "base_rev_required_or_stale",
 					"path": bre.Path, "base_rev": hash, "latest_content": bre.Content,

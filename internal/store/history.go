@@ -177,9 +177,16 @@ func (s *Store) DiffPR(ctx context.Context, rel string, pr int) (string, error) 
 	return s.git(ctx, "diff", "--no-ext-diff", "origin/main..."+ref, "--", clean)
 }
 
-// Hash returns the blob hash that base_rev uses.
-func (s *Store) Hash(ctx context.Context, content string) (string, error) {
-	out, err := gitx.RunInput(ctx, s.Mirror, []byte(content), "hash-object", "--stdin")
+// Hash returns the blob hash that base_rev uses. The path is passed to Git so
+// attributes such as text/eol normalization are applied exactly as they are for
+// the working-tree file. Hashing raw stdin would produce a different object for
+// CRLF checkouts and break every subsequent optimistic write.
+func (s *Store) Hash(ctx context.Context, rel, content string) (string, error) {
+	clean, err := CleanRel(rel)
+	if err != nil {
+		return "", err
+	}
+	out, err := gitx.RunInput(ctx, s.Mirror, []byte(content), "hash-object", "--stdin", "--path="+clean)
 	return strings.TrimSpace(out), err
 }
 

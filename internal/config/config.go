@@ -203,15 +203,15 @@ func LoadUser() (UserConfig, error) {
 		return c, err
 	}
 	b, err := os.ReadFile(p)
-	if errors.Is(err, os.ErrNotExist) {
-		normalizeUserConfig(&c)
-		return c, nil
-	}
-	if err != nil {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		// A missing config file is normal; environment overrides still apply.
+	case err != nil:
 		return c, err
-	}
-	if err := yaml.Unmarshal(b, &c); err != nil {
-		return c, fmt.Errorf("parse %s: %w", p, err)
+	default:
+		if err := yaml.Unmarshal(b, &c); err != nil {
+			return c, fmt.Errorf("parse %s: %w", p, err)
+		}
 	}
 	normalizeUserConfig(&c)
 	if v := strings.TrimSpace(os.Getenv("DOCSYNC_REMOTE")); v != "" {
@@ -364,11 +364,12 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 		c.Machine, c.Sources["machine"] = sanitizeMachine(h), "hostname"
 	}
 
-	// Project: flag -> env -> repo config -> alias -> normalized remote -> local/<dir>.
+	// Project: flag -> env -> repo config -> user config -> alias -> normalized remote -> local/<dir>.
 	c.Project, c.Sources["project"] = firstNonEmpty(
 		val(in.Flags.Project, "flag"),
 		val(in.Env["DOCSYNC_PROJECT"], "environment"),
 		val(in.Repo.Project, ".docsync.yaml"),
+		val(in.User.Project, "user config"),
 	)
 	if c.Project == "" && d.Project != "" {
 		if alias, ok := in.Registry.Aliases[d.Project]; ok && alias != "" {
@@ -388,19 +389,20 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	// Registry repo mapping.
 	mapping, hasMapping := in.Registry.Mapping(c.Project)
 
-	// Team: flag -> env -> repo -> registry -> CODEOWNERS -> user default.
+	// Team: flag -> env -> repo -> user -> registry -> code-repo CODEOWNERS ->
+	// store CODEOWNERS -> user default.
 	c.Team, c.Sources["team"] = firstNonEmpty(
 		val(in.Flags.Team, "flag"),
 		val(in.Env["DOCSYNC_TEAM"], "environment"),
 		val(in.Repo.Team, ".docsync.yaml"),
+		val(in.User.Team, "user config"),
 	)
 	if c.Team == "" && hasMapping && mapping.Team != "" {
 		c.Team, c.Sources["team"] = mapping.Team, "registry repos mapping"
 	}
-	if c.Team == "" {
-		if r := ReviewersFor(in.Store, c.ProjectArea()); r != "" {
-			// CODEOWNERS gives a GitHub team, not necessarily a local team key.
-			c.Reviewers = r
+	if c.Team == "" && d.Root != "" {
+		if t := rootTeam(d.Root); t != "" {
+			c.Team, c.Sources["team"] = t, "code repo CODEOWNERS root"
 		}
 	}
 	if c.Team == "" {
@@ -420,16 +422,19 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 		val(in.Flags.Domain, "flag"),
 		val(in.Env["DOCSYNC_DOMAIN"], "environment"),
 		val(in.Repo.Domain, ".docsync.yaml"),
+		val(in.User.Domain, "user config"),
 		val(mapping.Domain, "registry repos mapping"),
 	)
 
-	// Languages: flag -> env -> repo -> registry defaults -> manifests.
+	// Languages: flag -> env -> repo -> user -> manifests -> registry defaults.
 	if len(in.Flags.Languages) > 0 {
 		c.Languages, c.Sources["languages"] = cleanLanguages(in.Flags.Languages), "flag"
 	} else if v := splitCSV(in.Env["DOCSYNC_LANGUAGES"]); len(v) > 0 {
 		c.Languages, c.Sources["languages"] = cleanLanguages(v), "environment"
 	} else if len(in.Repo.Languages) > 0 {
 		c.Languages, c.Sources["languages"] = cleanLanguages(in.Repo.Languages), ".docsync.yaml"
+	} else if len(in.User.Languages) > 0 {
+		c.Languages, c.Sources["languages"] = cleanLanguages(in.User.Languages), "user config"
 	}
 	if len(c.Languages) == 0 && d.Root != "" {
 		if langs := detectLanguages(d.Root); len(langs) > 0 {
@@ -443,14 +448,11 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 		c.Sources["languages"] = "not detected"
 	}
 
-	if c.Reviewers == "" {
-		if r := ReviewersFor(in.Store, c.ProjectArea()); r != "" {
-			c.Reviewers = r
-		} else if r := in.Registry.Reviewers[c.Project]; r != "" {
-			c.Reviewers, c.Sources["reviewers"] = r, "registry reviewers"
-		}
-	} else {
-		c.Sources["reviewers"] = "store CODEOWNERS"
+	codeownersReviewers := ReviewersFor(in.Store, c.ProjectArea())
+	if r := in.Registry.Reviewers[c.Project]; r != "" {
+		c.Reviewers, c.Sources["reviewers"] = r, "registry reviewers"
+	} else if codeownersReviewers != "" {
+		c.Reviewers, c.Sources["reviewers"] = codeownersReviewers, "store CODEOWNERS"
 	}
 
 	return c
@@ -602,7 +604,17 @@ func LoadCodeOwners(storeRoot string) []CodeOwnerRule {
 	if storeRoot == "" {
 		return nil
 	}
-	b, err := os.ReadFile(filepath.Join(storeRoot, ".github", "CODEOWNERS"))
+	var b []byte
+	var err error
+	for _, rel := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
+		b, err = os.ReadFile(filepath.Join(storeRoot, rel))
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+	}
 	if err != nil {
 		return nil
 	}
@@ -639,7 +651,7 @@ func ReviewersFor(storeRoot, area string) string {
 func rootTeam(storeRoot string) string {
 	for _, r := range LoadCodeOwners(storeRoot) {
 		p := strings.Trim(strings.TrimSpace(r.Pattern), "/")
-		if p != "" && p != "*" && p != "**" && p != "/" {
+		if p != "" && p != "*" && p != "**" {
 			continue
 		}
 		if len(r.Owners) == 0 {

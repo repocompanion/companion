@@ -286,6 +286,7 @@ under `~/.docsync/cache/code/<repo>/<commit>/` and is keyed by provider version.
 Optional LSP servers:
 
 ```text
+Go                     gopls
 TypeScript/JavaScript  typescript-language-server --stdio
 Python                 pyright-langserver --stdio or pylsp
 PHP                    intelephense --stdio or phpactor language-server
@@ -380,7 +381,8 @@ manually against a sandbox repository.
 - `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
 - Code-reference validation is strongest for Go; non-Go syntax symbols require
   `universal-ctags`. Without it they use `git grep` and are marked `unverified`.
-- LSP provider supports live current-repo definitions when a language server is installed.
+- LSP provider supports live current-repo definitions when a language server is installed, including optional `gopls` for Go.
+- The native Go provider remains primary; gopls is an optional semantic fallback.
 - LSP references and SCIP are not implemented yet.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.

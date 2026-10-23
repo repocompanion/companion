@@ -1,9 +1,15 @@
 package codeindex
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/bolacha/docsync/internal/gitx"
 )
 
 func TestLSPHelpers(t *testing.T) {
@@ -40,5 +46,29 @@ func TestLSPProviderWithoutServers(t *testing.T) {
 	}
 	if _, err := p.Resolve(nil, ResolveRequest{}); err != ErrUnsupported {
 		t.Fatalf("Resolve error = %v", err)
+	}
+}
+
+func TestGoplsDefinition(t *testing.T) {
+	gopls, err := exec.LookPath("gopls")
+	if err != nil {
+		t.Skip("gopls is not installed")
+	}
+	root := testRepo(t)
+	commit, err := gitx.Run(context.Background(), root, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &LSPProvider{Servers: []lspServer{{
+		Name: "go", Language: "go", Binary: gopls, Exts: map[string]bool{".go": true},
+	}}, Available: true}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	sym, err := p.Resolve(ctx, ResolveRequest{Repo: "acme/api", Root: root, Commit: commit, Path: "internal/consumer.go", Symbol: "Consumer.Run"})
+	if err != nil {
+		t.Fatalf("gopls resolve: %v", err)
+	}
+	if sym.Provider != "lsp-go" || sym.Path != "internal/consumer.go" || sym.Line == 0 || !strings.Contains(sym.Signature, "Run") {
+		t.Fatalf("gopls symbol = %+v", sym)
 	}
 }

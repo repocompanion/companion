@@ -27,6 +27,7 @@ type lspServerSpec struct {
 }
 
 var lspServerSpecs = []lspServerSpec{
+	{name: "go", language: "go", exts: []string{".go"}, commands: [][]string{{"gopls"}}},
 	{name: "typescript", language: "typescript", exts: []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}, commands: [][]string{{"typescript-language-server", "--stdio"}}},
 	{name: "python", language: "python", exts: []string{".py", ".pyi"}, commands: [][]string{{"pyright-langserver", "--stdio"}, {"pylsp"}}},
 	{name: "php", language: "php", exts: []string{".php"}, commands: [][]string{{"intelephense", "--stdio"}, {"phpactor", "language-server"}}},
@@ -290,6 +291,14 @@ func (c *lspClient) request(ctx context.Context, method string, params any) (jso
 			Method string `json:"method"`
 		}
 		if err := json.Unmarshal(body, &msg); err != nil {
+			continue
+		}
+		if len(msg.ID) > 0 && msg.Method != "" {
+			result := any(nil)
+			if msg.Method == "workspace/configuration" {
+				result = []any{}
+			}
+			_ = c.write(ctx, map[string]any{"jsonrpc": "2.0", "id": msg.ID, "result": result})
 			continue
 		}
 		if len(msg.ID) == 0 || msg.Method != "" {

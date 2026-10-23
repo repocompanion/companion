@@ -2,11 +2,13 @@
 package guidance
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 	"unicode"
 
+	"github.com/bolacha/docsync/internal/codeindex"
 	"github.com/bolacha/docsync/internal/config"
 	"github.com/bolacha/docsync/internal/search"
 	"github.com/bolacha/docsync/internal/store"
@@ -28,9 +30,31 @@ type Result struct {
 	SupersededBy   string                `json:"superseded_by,omitempty"`
 	Overrides      string                `json:"overrides,omitempty"`
 	ReferenceImpls []store.ReferenceImpl `json:"reference_impls,omitempty"`
+	CodeContext    []CodeContext         `json:"code_context,omitempty"`
 	LastReviewed   string                `json:"last_reviewed,omitempty"`
 	Warnings       []string              `json:"warnings,omitempty"`
 	Note           string                `json:"note,omitempty"`
+}
+
+// CodeContext is the compact, validated view of a reference implementation.
+// It is intentionally separate from the raw frontmatter so callers can see
+// exactly what was resolved without parsing provider-specific data.
+type CodeContext struct {
+	Repo         string `json:"repo,omitempty"`
+	Path         string `json:"path"`
+	Symbol       string `json:"symbol,omitempty"`
+	Kind         string `json:"kind,omitempty"`
+	Ref          string `json:"ref,omitempty"`
+	Commit       string `json:"commit,omitempty"`
+	PathStatus   string `json:"path_status,omitempty"`
+	SymbolStatus string `json:"symbol_status,omitempty"`
+	DriftStatus  string `json:"drift_status,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	ResolvedPath string `json:"resolved_path,omitempty"`
+	Line         int    `json:"line,omitempty"`
+	Qualified    string `json:"qualified,omitempty"`
+	Signature    string `json:"signature,omitempty"`
+	Reason       string `json:"reason,omitempty"`
 }
 
 type candidate struct {
@@ -238,6 +262,72 @@ func Lookup(s *store.Store, ctx *config.Context, task, language string, maxResul
 	return out, nil
 }
 
+// Enrich attaches validated code context to guidance results. It is a no-op
+// when the results have no reference implementations. Missing code roots and
+// validation errors become per-result warnings rather than failing guidance.
+func Enrich(ctx context.Context, results []Result, root, project string) {
+	docs := make([]*store.Doc, 0, len(results))
+	byPath := map[string]int{}
+	for i := range results {
+		if len(results[i].ReferenceImpls) == 0 {
+			continue
+		}
+		if strings.TrimSpace(root) == "" {
+			results[i].Warnings = append(results[i].Warnings, "code context unavailable: no code repository detected")
+			continue
+		}
+		docs = append(docs, &store.Doc{
+			Path: results[i].Path,
+			Frontmatter: store.Frontmatter{
+				ReferenceImpls: results[i].ReferenceImpls,
+				LastReviewed:   results[i].LastReviewed,
+			},
+		})
+		byPath[results[i].Path] = i
+	}
+	if len(docs) == 0 {
+		return
+	}
+	validated, err := codeindex.ValidateDocs(ctx, root, project, docs)
+	if err != nil {
+		for i := range results {
+			if len(results[i].ReferenceImpls) > 0 {
+				results[i].Warnings = append(results[i].Warnings, "code context unavailable: "+err.Error())
+			}
+		}
+		return
+	}
+	applyCodeContext(results, byPath, validated)
+}
+
+func applyCodeContext(results []Result, byPath map[string]int, validated []codeindex.DocValidation) {
+	for _, d := range validated {
+		i, ok := byPath[d.Path]
+		if !ok {
+			continue
+		}
+		for _, ref := range d.References {
+			cc := CodeContext{
+				Repo: ref.Repo, Path: ref.Path, Symbol: ref.Symbol, Kind: ref.Kind,
+				Ref: ref.Ref, Commit: ref.Commit, PathStatus: ref.PathStatus,
+				SymbolStatus: ref.SymbolStatus, DriftStatus: ref.DriftStatus,
+				Provider: ref.Provider, ResolvedPath: ref.ResolvedPath,
+				Line: ref.ResolvedLine, Qualified: ref.ResolvedQualified,
+				Signature: ref.ResolvedSignature, Reason: ref.Reason,
+			}
+			results[i].CodeContext = append(results[i].CodeContext, cc)
+			switch {
+			case ref.PathStatus == codeindex.PathMissing:
+				results[i].Warnings = append(results[i].Warnings, fmt.Sprintf("missing code reference path %s", ref.Path))
+			case ref.SymbolStatus == codeindex.SymbolMissing:
+				results[i].Warnings = append(results[i].Warnings, fmt.Sprintf("missing code symbol %s", ref.Symbol))
+			case ref.DriftStatus == codeindex.DriftStale:
+				results[i].Warnings = append(results[i].Warnings, fmt.Sprintf("stale code reference %s: %s", ref.Path, ref.DriftReason))
+			}
+		}
+	}
+}
+
 func scoreDoc(d *store.Doc, tokens []string, language string) int {
 	f := d.Frontmatter
 	score := 0
@@ -306,6 +396,22 @@ func FormatCompact(results []Result) string {
 				refName = ref.Repo + "@" + ref.Commit
 			}
 			fmt.Fprintf(&b, "   ref: %s:%s\n", refName, ref.Path)
+		}
+		for _, cc := range r.CodeContext {
+			loc := cc.Path
+			if cc.ResolvedPath != "" {
+				loc = cc.ResolvedPath
+			}
+			if cc.Line > 0 {
+				loc = fmt.Sprintf("%s:%d", loc, cc.Line)
+			}
+			if cc.Qualified != "" {
+				loc += " (" + cc.Qualified + ")"
+			}
+			fmt.Fprintf(&b, "   code: %s [%s] path=%s symbol=%s drift=%s\n", loc, cc.Provider, cc.PathStatus, cc.SymbolStatus, cc.DriftStatus)
+			if cc.Signature != "" {
+				fmt.Fprintf(&b, "         %s\n", cc.Signature)
+			}
 		}
 	}
 	return b.String()

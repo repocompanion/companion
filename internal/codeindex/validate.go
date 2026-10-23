@@ -146,6 +146,10 @@ func (v Validator) validateRef(ctx context.Context, r Reference, lastReviewed st
 			out.SymbolStatus = SymbolValid
 			out.Provider = provider.Name()
 			out.Reason = fmt.Sprintf("resolved %s at %s:%d", sym.Qualified, sym.Path, sym.Line)
+			out.ResolvedPath = sym.Path
+			out.ResolvedLine = sym.Line
+			out.ResolvedQualified = sym.Qualified
+			out.ResolvedSignature = sym.Signature
 			if r.Fingerprint != "" {
 				if sym.Fingerprint != r.Fingerprint {
 					out.DriftStatus = DriftStale

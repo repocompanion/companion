@@ -59,6 +59,9 @@ func TestValidatePathAndGrepFallback(t *testing.T) {
 	if dv.References[1].PathStatus != PathValid || dv.References[1].SymbolStatus != SymbolValid || dv.References[1].Provider != "go" {
 		t.Fatalf("go symbol = %+v", dv.References[1])
 	}
+	if dv.References[1].ResolvedPath != "internal/consumer.go" || dv.References[1].ResolvedLine == 0 || dv.References[1].ResolvedQualified == "" || dv.References[1].ResolvedSignature == "" {
+		t.Fatalf("resolved symbol metadata = %+v", dv.References[1])
+	}
 	if dv.References[2].PathStatus != PathValid || dv.References[2].SymbolStatus != SymbolUnverified || dv.References[2].Provider != "git-grep" || !strings.Contains(dv.References[2].Reason, "literal symbol match") {
 		t.Fatalf("grep fallback = %+v", dv.References[2])
 	}

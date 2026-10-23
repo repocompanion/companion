@@ -314,7 +314,7 @@ func registerContextTools(s *mcp.Server, p *provider) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "docs_get_guidance",
-		Description: "Entry point for coding tasks. Returns ranked patterns, ADRs and standards with reference implementation locations.",
+		Description: "Entry point for coding tasks. Returns ranked patterns, ADRs and standards with validated reference implementation paths, symbols, lines and signatures when available.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in guidIn) (*mcp.CallToolResult, any, error) {
 		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
@@ -327,25 +327,7 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		if err != nil {
 			return errorResult(err)
 		}
-		for i := range results {
-			if len(results[i].ReferenceImpls) == 0 {
-				continue
-			}
-			doc := &store.Doc{Path: results[i].Path, Frontmatter: store.Frontmatter{
-				ReferenceImpls: results[i].ReferenceImpls, LastReviewed: results[i].LastReviewed,
-			}}
-			validated, verr := codeindex.ValidateDocs(ctx, sess.Context.RepoRoot, sess.Context.Project, []*store.Doc{doc})
-			if verr != nil {
-				continue
-			}
-			for _, d := range validated {
-				for _, ref := range d.References {
-					if ref.DriftStatus == codeindex.DriftStale {
-						results[i].Warnings = append(results[i].Warnings, fmt.Sprintf("stale code reference %s: %s", ref.Path, ref.DriftReason))
-					}
-				}
-			}
-		}
+		guidance.Enrich(ctx, results, sess.Context.RepoRoot, sess.Context.Project)
 		return textResult(map[string]any{"task": in.Task, "results": results})
 	})
 

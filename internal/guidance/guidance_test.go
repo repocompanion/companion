@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/bolacha/docsync/internal/codeindex"
 	"github.com/bolacha/docsync/internal/config"
 	"github.com/bolacha/docsync/internal/store"
 )
@@ -82,5 +83,35 @@ topics: [sqs]
 		if r.Status == "deprecated" {
 			t.Fatal("deprecated doc should be excluded when live results exist")
 		}
+	}
+}
+
+func TestApplyCodeContextExposesResolvedSymbols(t *testing.T) {
+	results := []Result{{Path: "projects/acme/api/patterns/sqs.md"}}
+	byPath := map[string]int{results[0].Path: 0}
+	applyCodeContext(results, byPath, []codeindex.DocValidation{{
+		Path: results[0].Path,
+		References: []codeindex.ReferenceValidation{{
+			Reference:         codeindex.Reference{Path: "internal/consumer.go", Symbol: "Consumer.Run"},
+			PathStatus:        codeindex.PathValid,
+			SymbolStatus:      codeindex.SymbolValid,
+			DriftStatus:       codeindex.DriftStale,
+			Provider:          "go",
+			ResolvedPath:      "internal/consumer.go",
+			ResolvedLine:      12,
+			ResolvedQualified: "consumer.Consumer.Run",
+			ResolvedSignature: "func ()",
+			DriftReason:       "symbol fingerprint changed",
+		}},
+	}})
+	if len(results[0].CodeContext) != 1 {
+		t.Fatalf("code context = %+v", results[0].CodeContext)
+	}
+	cc := results[0].CodeContext[0]
+	if cc.Line != 12 || cc.Qualified != "consumer.Consumer.Run" || cc.Signature != "func ()" {
+		t.Fatalf("code context = %+v", cc)
+	}
+	if len(results[0].Warnings) != 1 {
+		t.Fatalf("warnings = %+v", results[0].Warnings)
 	}
 }

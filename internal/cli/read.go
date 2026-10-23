@@ -313,6 +313,7 @@ func (a *App) guidanceCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			guidance.Enrich(context.Background(), results, s.Context.RepoRoot, s.Context.Project)
 			if a.JSON {
 				return a.printJSON(results)
 			}

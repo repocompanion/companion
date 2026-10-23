@@ -21,7 +21,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
 - **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
-- **Code context**: validate `reference_impls` paths/symbols, resolve symbols with the native Go provider and optional ctags, detect advisory drift, and expose `code map`, `code find` and `stale` commands plus MCP tools.
+- **Code context**: validate `reference_impls` paths/symbols, resolve symbols with the native Go provider and optional ctags, attach resolved paths/lines/signatures to guidance, detect advisory drift, and expose `code map`, `code find` and `stale` commands plus MCP tools.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -155,7 +155,7 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync ls [DIR] [--pending]` | List docs with pending states, optionally with open PRs |
 | `docsync cat <doc> [--rev R] [--pr N]` | Print a document; reports changeset deletions |
 | `docsync search <query> [--all]` | Search with the active changeset overlay |
-| `docsync guidance "<task>" [--lang go]` | Ranked patterns, ADRs, standards |
+| `docsync guidance "<task>" [--lang go]` | Ranked patterns, ADRs, standards with validated code context |
 | `docsync export agents-md` | Managed AGENTS.md block for coding agents |
 | `docsync export llms-txt` | Compact llms.txt discovery file |
 | `docsync export context` | Bounded JSON/Markdown context bundle |
@@ -364,8 +364,12 @@ drift_status   fresh | stale | unknown
 provider       go | ctags | git-grep
 ```
 
-Drift is currently advisory. It appears in validation, context and guidance
-warnings and in `docs_stale`, but does not block submit.
+`docs_get_guidance` and `docsync guidance` attach `code_context` entries with the
+resolved path, line, qualified name, signature, provider and validation status.
+If no code repository is available, they return a warning instead of failing.
+
+Drift is currently advisory. It appears in validation, context, guidance and
+submit warnings, and in `docs_stale`, but does not block submit.
 
 ### Provider limits
 

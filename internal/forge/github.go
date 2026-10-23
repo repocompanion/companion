@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bolacha/docsync/internal/config"
@@ -59,6 +60,9 @@ type Client struct {
 	BaseURL string
 	gh      *github.Client
 	enabled bool
+
+	statusMu    sync.Mutex
+	statusCache map[int]cachedPRStatus
 }
 
 // NewFromRemote builds a client for a GitHub remote. It never fails just
@@ -269,6 +273,7 @@ func (c *Client) CreateDraft(ctx context.Context, title, head, base, body string
 		return nil, err
 	}
 	out := toPR(p)
+	c.invalidateStatus(out.Number)
 	return &out, nil
 }
 
@@ -284,6 +289,7 @@ func (c *Client) Update(ctx context.Context, number int, title, body string) (*P
 		return nil, err
 	}
 	out := toPR(p)
+	c.invalidateStatus(out.Number)
 	return &out, nil
 }
 
@@ -293,6 +299,9 @@ func (c *Client) Close(ctx context.Context, number int) error {
 	}
 	state := "closed"
 	_, _, err := c.gh.PullRequests.Edit(ctx, c.Owner, c.Repo, number, &github.PullRequest{State: &state})
+	if err == nil {
+		c.invalidateStatus(number)
+	}
 	return err
 }
 
@@ -351,6 +360,7 @@ func (c *Client) SetDraft(ctx context.Context, number int, draft bool) error {
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("GitHub GraphQL returned HTTP %d", resp.StatusCode)
 	}
+	c.invalidateStatus(number)
 	return nil
 }
 

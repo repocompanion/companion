@@ -268,6 +268,8 @@ Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
 `docs_move`, `docs_delete`, `docs_record_decision`, `docs_propose_pattern`, `docs_scaffold_project`,
 `docs_set_context`, `docs_change_sync`, `docs_change_submit`,
 `docs_change_reopen`, `docs_change_status`, `docs_review_comments`.
+`docs_change_status` includes CI check details, review decision, unresolved
+threads, mergeability and short-TTL cached results.
 
 Agents can never merge. `docs_change_submit` lints changed documents and
 validates their code references, keeping the PR as a draft on errors. Missing
@@ -456,8 +458,10 @@ manually against a sandbox repository.
 - GitHub only; GitLab is not implemented.
 - One central store; docs are not stored inside service repositories.
 - No web UI, live co-editing, semantic search or background daemon.
-- GitHub review/check display is minimal; branch protection remains the source
-  of truth.
+- `docs_change_status` shows check-run conclusions, review decision, unresolved
+  review threads and mergeability. Branch protection remains the source of truth.
+  Legacy commit-status contexts, rate-limit warnings and the marker fast path are
+  not implemented yet.
 - MCP roots are supported on protocol `2025-11-25`; protocol `2026-07-28+`
   falls back to cwd because roots were replaced by multi-round-trip requests.
 - The current MCP roots implementation is intentionally lazy and cache-aware;

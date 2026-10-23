@@ -332,7 +332,7 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "docs_change_status",
-		Description: "Show local dirty/committed state, PR state, CI/review status where available, frozen state and sync errors.",
+		Description: "Show local dirty/committed state, PR state, checks, review decision, unresolved threads, mergeability, frozen state and sync errors.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in statusIn) (*mcp.CallToolResult, any, error) {
 		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
@@ -348,8 +348,21 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 		dirty, _ := sess.Manager.Dirty(ctx, c)
 		out := map[string]any{"changeset": c, "dirty": dirty, "frozen": c.IsReady()}
 		if c.PR > 0 && sess.Runtime.Forge != nil && sess.Runtime.Forge.Available() {
-			if pr, err := sess.Runtime.Forge.Get(ctx, c.PR); err == nil {
-				out["pr"] = pr
+			status, serr := sess.Runtime.Forge.Status(ctx, c.PR)
+			if serr != nil {
+				out["warnings"] = []string{"could not load PR status: " + serr.Error()}
+			} else {
+				out["pr"] = status.PR
+				out["checks"] = status.Checks
+				out["check_conclusion"] = status.CheckConclusion
+				out["review_decision"] = status.ReviewDecision
+				out["unresolved_threads"] = status.UnresolvedThreads
+				out["mergeable"] = status.Mergeable
+				out["mergeable_state"] = status.MergeableState
+				out["review_fetched_at"] = status.FetchedAt
+				if len(status.Warnings) > 0 {
+					out["warnings"] = status.Warnings
+				}
 			}
 		}
 		return textResult(out)

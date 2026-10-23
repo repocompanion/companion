@@ -1759,6 +1759,21 @@ func (m *Manager) unpublished(ctx context.Context, c state.Change) (bool, error)
 	if strings.TrimSpace(status) != "" {
 		return true, nil
 	}
+
+	// The PR head is the authoritative comparison after a merge, because the
+	// remote branch may already be deleted or pruned. Fetch the pull ref when
+	// possible; this works over the same Git transport as normal pushes and
+	// does not require a GitHub token.
+	if c.PR > 0 {
+		if head, headErr := m.prHeadRef(ctx, c.PR); headErr == nil && head != "" {
+			out, revErr := m.wt(ctx, c, "rev-list", "--count", head+"..HEAD")
+			if revErr != nil {
+				return true, nil
+			}
+			return strings.TrimSpace(out) != "0", nil
+		}
+	}
+
 	if _, err := m.git(ctx, "rev-parse", "--verify", "refs/remotes/origin/"+c.Branch); err == nil {
 		out, err := m.wt(ctx, c, "rev-list", "--count", "origin/"+c.Branch+"..HEAD")
 		if err != nil {
@@ -1771,6 +1786,18 @@ func (m *Manager) unpublished(ctx context.Context, c state.Change) (bool, error)
 		return false, nil
 	}
 	return strings.TrimSpace(out) != "0", nil
+}
+
+func (m *Manager) prHeadRef(ctx context.Context, pr int) (string, error) {
+	if pr <= 0 {
+		return "", fmt.Errorf("invalid PR number")
+	}
+	ref := fmt.Sprintf("refs/docsync/pr/%d", pr)
+	spec := fmt.Sprintf("+refs/pull/%d/head:%s", pr, ref)
+	if _, err := m.git(ctx, "fetch", "origin", spec); err != nil {
+		return "", err
+	}
+	return m.git(ctx, "rev-parse", "--verify", ref+"^{commit}")
 }
 
 func (m *Manager) archive(ctx context.Context, c state.Change) error {

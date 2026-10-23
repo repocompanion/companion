@@ -51,6 +51,7 @@ id: readme
 kind: project-doc
 title: Acme API
 status: approved
+last_reviewed: 2020-01-01
 reference_impls:
   - repo: acme/api
     path: projects/acme/api/README.md
@@ -179,8 +180,15 @@ last_reviewed: 2026-01-01
 	}
 	refsOut := call("docs_validate_code_refs", map[string]any{})
 	refsSummary, _ := refsOut["summary"].(map[string]any)
-	if refsSummary["valid_paths"].(float64) < 1 {
-		t.Fatalf("code refs were not validated: %v", refsOut)
+	if refsSummary["valid_paths"].(float64) < 1 || refsSummary["stale_refs"].(float64) < 1 {
+		t.Fatalf("code refs were not validated with drift: %v", refsOut)
+	}
+	staleOut := call("docs_stale", map[string]any{})
+	if docs, _ := staleOut["docs"].([]any); len(docs) == 0 {
+		t.Fatalf("docs_stale returned no stale docs: %v", staleOut)
+	}
+	if warnings, _ := ctxOut["warnings"].([]any); len(warnings) == 0 {
+		t.Fatalf("context did not include a stale-reference warning: %v", ctxOut)
 	}
 	rootCtx, _ := ctxOut["context"].(map[string]any)
 	if rootCtx["repo_root"] != "" {

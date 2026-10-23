@@ -151,7 +151,8 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync blame <doc>` | Line authorship |
 | `docsync restore <doc> <version>` | Open a changeset that restores a version |
 | `docsync lint [--store DIR]` | Local subset of store CI |
-| `docsync validate-code-refs [--all]` | Validate reference_impls paths and symbols |
+| `docsync validate-code-refs [--all]` | Validate reference_impls paths, symbols and drift |
+| `docsync stale [--all]` | Show documents with stale code references |
 | `docsync code map [--path DIR]` | Index Go symbols in the current repo |
 | `docsync code find <symbol>` | Resolve a Go symbol |
 | `docsync config get\|set\|init-repo` | Manage user and repo config |
@@ -234,7 +235,7 @@ with `git mv` and validates the destination.
 
 Read: `docs_get_context`, `docs_get_guidance`, `docs_list`, `docs_search`,
 `docs_read`, `docs_history`, `docs_diff`, `docs_pull`,
-`docs_validate_code_refs`, `docs_code_map`, `docs_code_find`.
+`docs_validate_code_refs`, `docs_stale`, `docs_code_map`, `docs_code_find`.
 
 Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
 `docs_move`, `docs_delete`, `docs_record_decision`, `docs_propose_pattern`, `docs_scaffold_project`,
@@ -258,6 +259,19 @@ References to other repos are reported as `external`; unresolved refs are
 `unverified`. For Go files, symbols are resolved with the Go provider
 (`go/packages`/`go/ast`). Other languages fall back to `git grep` and are marked
 `unverified` until more providers are added.
+
+Go references are also checked for drift:
+
+- changed symbol fingerprints;
+- code changes after `last_reviewed`.
+
+```bash
+docsync stale
+docsync stale --all --json
+```
+
+Drift is advisory: it appears in validation, context, guidance and `docs_stale`,
+but does not block submit.
 
 ```bash
 docsync code map --path internal/consumer
@@ -352,7 +366,9 @@ manually against a sandbox repository.
   `git grep` and are marked `unverified`.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.
-- Drift detection and `docs_stale` are not implemented yet.
-- Fingerprints are validated for format but drift detection is not implemented yet.
+- Drift warnings are advisory; submit preflight does not yet block or warn.
+- Code-change drift uses the referenced path’s latest Git date.
+- `docs_stale` only covers the current repository.
+- Fingerprints are compared for Go symbols; non-Go drift remains unknown.
 
 See `PLAN.md` for the full design and roadmap.

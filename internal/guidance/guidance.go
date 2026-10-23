@@ -28,6 +28,8 @@ type Result struct {
 	SupersededBy   string                `json:"superseded_by,omitempty"`
 	Overrides      string                `json:"overrides,omitempty"`
 	ReferenceImpls []store.ReferenceImpl `json:"reference_impls,omitempty"`
+	LastReviewed   string                `json:"last_reviewed,omitempty"`
+	Warnings       []string              `json:"warnings,omitempty"`
 	Note           string                `json:"note,omitempty"`
 }
 
@@ -220,6 +222,7 @@ func Lookup(s *store.Store, ctx *config.Context, task, language string, maxResul
 			SupersededBy:   f.SupersededBy,
 			Overrides:      f.Overrides,
 			ReferenceImpls: f.ReferenceImpls,
+			LastReviewed:   f.LastReviewed,
 		}
 		if f.Status == "deprecated" || f.Status == "superseded" {
 			r.Note = "deprecated"
@@ -290,6 +293,9 @@ func FormatCompact(results []Result) string {
 		}
 		if r.Note != "" {
 			fmt.Fprintf(&b, "   note: %s\n", r.Note)
+		}
+		for _, w := range r.Warnings {
+			fmt.Fprintf(&b, "   warning: %s\n", w)
 		}
 		for _, ref := range r.ReferenceImpls {
 			refName := ref.Repo + "@main"

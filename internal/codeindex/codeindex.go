@@ -20,11 +20,14 @@ type Reference struct {
 
 type ReferenceValidation struct {
 	Reference
-	Commit       string `json:"resolved_commit,omitempty"`
-	PathStatus   string `json:"path_status"`
-	SymbolStatus string `json:"symbol_status"`
-	Provider     string `json:"provider,omitempty"`
-	Reason       string `json:"reason,omitempty"`
+	Commit        string `json:"resolved_commit,omitempty"`
+	PathStatus    string `json:"path_status"`
+	SymbolStatus  string `json:"symbol_status"`
+	DriftStatus   string `json:"drift_status"`
+	Provider      string `json:"provider,omitempty"`
+	Reason        string `json:"reason,omitempty"`
+	DriftReason   string `json:"drift_reason,omitempty"`
+	CodeChangedAt string `json:"code_changed_at,omitempty"`
 }
 
 type DocValidation struct {
@@ -41,6 +44,9 @@ type Summary struct {
 	Unverified   int `json:"unverified"`
 	GrepMatches  int `json:"grep_matches"`
 	Unsupported  int `json:"unsupported"`
+	FreshRefs    int `json:"fresh_refs"`
+	StaleRefs    int `json:"stale_refs"`
+	UnknownDrift int `json:"unknown_drift"`
 }
 
 const (
@@ -56,6 +62,10 @@ const (
 	SymbolExternal     = "external"
 	SymbolUnsupported  = "unsupported"
 	SymbolUnverified   = "unverified"
+
+	DriftFresh   = "fresh"
+	DriftStale   = "stale"
+	DriftUnknown = "unknown"
 )
 
 type Capabilities struct {

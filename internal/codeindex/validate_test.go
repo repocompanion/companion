@@ -153,3 +153,57 @@ func TestGoProviderIndexAndResolve(t *testing.T) {
 		t.Fatalf("resolved = %+v", resolved)
 	}
 }
+
+func TestDriftDetection(t *testing.T) {
+	root := testRepo(t)
+	ctx := context.Background()
+	provider := &GoProvider{CacheDir: t.TempDir()}
+	snap, err := provider.Index(ctx, IndexRequest{Repo: "acme/api", Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oldFingerprint string
+	for _, s := range snap.Symbols {
+		if s.Kind == "method" && s.Name == "Run" {
+			oldFingerprint = s.Fingerprint
+		}
+	}
+	if oldFingerprint == "" {
+		t.Fatal("old symbol fingerprint not found")
+	}
+	// Change the symbol signature and commit a new HEAD.
+	file := filepath.Join(root, "internal", "consumer.go")
+	if err := os.WriteFile(file, []byte("package internal\n\ntype Consumer struct{}\n\nfunc (c Consumer) Run(arg string) {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitx.Run(ctx, root, "add", "."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitx.Run(ctx, root, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "change symbol"); err != nil {
+		t.Fatal(err)
+	}
+	v := Validator{Root: root, Project: "acme/api", Go: provider}
+	doc := &store.Doc{Path: "projects/acme/api/patterns/x.md", Frontmatter: store.Frontmatter{
+		LastReviewed: "2020-01-01",
+		ReferenceImpls: []store.ReferenceImpl{
+			{Repo: "acme/api", Path: "internal/consumer.go", Symbol: "Consumer.Run", Fingerprint: oldFingerprint},
+			{Repo: "acme/api", Path: "internal/consumer.go"},
+		},
+	}}
+	dv, err := v.ValidateDoc(ctx, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dv.References[0].SymbolStatus != SymbolValid || dv.References[0].DriftStatus != DriftStale {
+		t.Fatalf("symbol drift = %+v", dv.References[0])
+	}
+	if !strings.Contains(dv.References[0].DriftReason, "fingerprint") {
+		t.Fatalf("drift reason = %q", dv.References[0].DriftReason)
+	}
+	if dv.References[1].PathStatus != PathValid || dv.References[1].DriftStatus != DriftStale {
+		t.Fatalf("path drift = %+v", dv.References[1])
+	}
+	if s := Summarize([]DocValidation{dv}); s.StaleRefs != 2 {
+		t.Fatalf("summary = %+v", s)
+	}
+}

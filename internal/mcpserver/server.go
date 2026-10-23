@@ -187,6 +187,7 @@ type contextOut struct {
 	MirrorRev      string        `json:"mirror_rev"`
 	MirrorAge      string        `json:"mirror_age"`
 	Warnings       []string      `json:"warnings,omitempty"`
+	StaleRefs      int           `json:"stale_refs,omitempty"`
 	NextCursor     string        `json:"next_cursor,omitempty"`
 	Structure      structureInfo `json:"structure"`
 }
@@ -214,6 +215,7 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		}
 		area := sess.Context.ProjectArea()
 		var docs []docIndex
+		var codeDocs []*store.Doc
 		for _, dir := range []string{area, sess.Context.TeamArea(), "org"} {
 			if dir == "" {
 				continue
@@ -227,6 +229,7 @@ func registerContextTools(s *mcp.Server, p *provider) {
 				continue
 			}
 			for _, d := range o.Docs {
+				codeDocs = append(codeDocs, d)
 				docs = append(docs, docIndex{
 					Path: d.Path, Title: d.Frontmatter.Title, Kind: d.Frontmatter.Kind,
 					Status: d.Frontmatter.Status, Source: o.Sources[d.Path], State: o.States[d.Path],
@@ -253,9 +256,16 @@ func registerContextTools(s *mcp.Server, p *provider) {
 			nextCursor = next
 			truncated = next != ""
 		}
+		staleRefs := 0
+		if codeValidated, verr := codeindex.ValidateDocs(ctx, sess.Context.RepoRoot, sess.Context.Project, codeDocs); verr == nil {
+			staleRefs = codeindex.Summarize(codeValidated).StaleRefs
+		}
 		var prs []any
 		prsChecked := false
 		warnings := append([]string{}, sess.Context.Warnings...)
+		if staleRefs > 0 {
+			warnings = append(warnings, fmt.Sprintf("%d stale code reference(s); run docs_stale", staleRefs))
+		}
 		if area != "" {
 			if sess.Runtime.Forge == nil || !sess.Runtime.Forge.Available() {
 				warnings = append(warnings, "GitHub token unavailable; open PRs were not checked")
@@ -284,7 +294,7 @@ func registerContextTools(s *mcp.Server, p *provider) {
 			Context: sess.Context, Area: area, Docs: docs, TotalDocs: totalDocs,
 			ReturnedDocs: len(docs), Truncated: truncated, Missing: missing,
 			OpenPRs: prs, OpenPRsChecked: prsChecked, Changesets: cs, MirrorRev: rev,
-			MirrorAge: humanAge(time.Since(ct)), Warnings: warnings,
+			MirrorAge: humanAge(time.Since(ct)), Warnings: warnings, StaleRefs: staleRefs,
 			NextCursor: nextCursor, Structure: canonicalStructure(),
 		}
 		if truncated {
@@ -316,6 +326,25 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		results, err := guidance.Lookup(sess.Runtime.Store, sess.Context, in.Task, in.Language, in.MaxResults)
 		if err != nil {
 			return errorResult(err)
+		}
+		for i := range results {
+			if len(results[i].ReferenceImpls) == 0 {
+				continue
+			}
+			doc := &store.Doc{Path: results[i].Path, Frontmatter: store.Frontmatter{
+				ReferenceImpls: results[i].ReferenceImpls, LastReviewed: results[i].LastReviewed,
+			}}
+			validated, verr := codeindex.ValidateDocs(ctx, sess.Context.RepoRoot, sess.Context.Project, []*store.Doc{doc})
+			if verr != nil {
+				continue
+			}
+			for _, d := range validated {
+				for _, ref := range d.References {
+					if ref.DriftStatus == codeindex.DriftStale {
+						results[i].Warnings = append(results[i].Warnings, fmt.Sprintf("stale code reference %s: %s", ref.Path, ref.DriftReason))
+					}
+				}
+			}
 		}
 		return textResult(map[string]any{"task": in.Task, "results": results})
 	})
@@ -451,6 +480,64 @@ func registerContextTools(s *mcp.Server, p *provider) {
 			"docs":      validated,
 			"summary":   codeindex.Summarize(validated),
 		})
+	})
+
+	type staleCodeIn struct {
+		Path    string `json:"path,omitempty" jsonschema:"optional document path"`
+		Scope   string `json:"scope,omitempty" jsonschema:"project|team|org|all; default project"`
+		Project string `json:"project,omitempty"`
+	}
+	addTool(s, &mcp.Tool{
+		Name:        "docs_stale",
+		Description: "Return documents whose code references have stale fingerprints or changed after last_reviewed. Advisory only.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in staleCodeIn) (*mcp.CallToolResult, any, error) {
+		sess, err := p.session(ctx, req, in.Project)
+		if err != nil {
+			return errorResult(err)
+		}
+		if err := requireStore(sess); err != nil {
+			return errorResult(err)
+		}
+		dir, err := scopeDir(sess, in.Scope, "")
+		if err != nil {
+			return errorResult(err)
+		}
+		o, err := sess.Manager.OverlayDir(ctx, dir)
+		if err != nil {
+			return errorResult(err)
+		}
+		docs := o.Docs
+		if strings.TrimSpace(in.Path) != "" {
+			rel, err := resolvePath(sess, in.Path)
+			if err != nil {
+				return errorResult(err)
+			}
+			filtered := make([]*store.Doc, 0, 1)
+			for _, d := range docs {
+				if d.Path == rel {
+					filtered = append(filtered, d)
+				}
+			}
+			docs = filtered
+		}
+		validated, err := codeindex.ValidateDocs(ctx, sess.Context.RepoRoot, sess.Context.Project, docs)
+		if err != nil {
+			return errorResult(err)
+		}
+		var stale []codeindex.DocValidation
+		for _, d := range validated {
+			var refs []codeindex.ReferenceValidation
+			for _, r := range d.References {
+				if r.DriftStatus == codeindex.DriftStale {
+					refs = append(refs, r)
+				}
+			}
+			if len(refs) > 0 {
+				d.References = refs
+				stale = append(stale, d)
+			}
+		}
+		return textResult(map[string]any{"docs": stale, "summary": codeindex.Summarize(stale)})
 	})
 
 	type codeMapIn struct {

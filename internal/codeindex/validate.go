@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/bolacha/docsync/internal/gitx"
 	"github.com/bolacha/docsync/internal/store"
@@ -40,14 +41,14 @@ func (v Validator) ValidateDoc(ctx context.Context, doc *store.Doc) (DocValidati
 	}
 	out := DocValidation{Path: doc.Path}
 	for _, r := range doc.Frontmatter.ReferenceImpls {
-		rv := v.validateRef(ctx, referenceFromStore(r))
+		rv := v.validateRef(ctx, referenceFromStore(r), doc.Frontmatter.LastReviewed)
 		out.References = append(out.References, rv)
 	}
 	return out, nil
 }
 
-func (v Validator) validateRef(ctx context.Context, r Reference) ReferenceValidation {
-	out := ReferenceValidation{Reference: r, SymbolStatus: SymbolNotRequested}
+func (v Validator) validateRef(ctx context.Context, r Reference, lastReviewed string) ReferenceValidation {
+	out := ReferenceValidation{Reference: r, SymbolStatus: SymbolNotRequested, DriftStatus: DriftUnknown}
 	if strings.TrimSpace(r.Path) == "" {
 		out.PathStatus = PathInvalid
 		out.SymbolStatus = SymbolUnverified
@@ -103,6 +104,13 @@ func (v Validator) validateRef(ctx context.Context, r Reference) ReferenceValida
 	}
 	out.PathStatus = PathValid
 	out.Provider = "git"
+	if changed, err := gitx.Run(ctx, v.Root, "log", "-1", "--format=%cs", commit, "--", r.Path); err == nil {
+		out.CodeChangedAt = changed
+		out.DriftStatus = driftFor(changed, lastReviewed)
+		if out.DriftStatus == DriftStale {
+			out.DriftReason = fmt.Sprintf("code changed on %s after last_reviewed %s", changed, lastReviewed)
+		}
+	}
 	if r.Symbol == "" {
 		return out
 	}
@@ -118,8 +126,14 @@ func (v Validator) validateRef(ctx context.Context, r Reference) ReferenceValida
 			out.SymbolStatus = SymbolValid
 			out.Provider = gp.Name()
 			out.Reason = fmt.Sprintf("resolved %s at %s:%d", sym.Qualified, sym.Path, sym.Line)
-			if r.Fingerprint != "" && sym.Fingerprint != r.Fingerprint {
-				out.Reason += "; fingerprint mismatch (drift detection pending)"
+			if r.Fingerprint != "" {
+				if sym.Fingerprint != r.Fingerprint {
+					out.DriftStatus = DriftStale
+					out.DriftReason = "symbol fingerprint changed"
+				} else if out.DriftStatus != DriftStale {
+					out.DriftStatus = DriftFresh
+					out.DriftReason = "symbol fingerprint matches"
+				}
 			}
 			return out
 		}
@@ -193,6 +207,19 @@ func resolveCommit(ctx context.Context, root, ref, commit string) (string, error
 	return "", fmt.Errorf("ref %s is not reachable", ref)
 }
 
+func driftFor(codeDate, reviewed string) string {
+	if strings.TrimSpace(codeDate) == "" || strings.TrimSpace(reviewed) == "" {
+		return DriftUnknown
+	}
+	if _, err := time.Parse("2006-01-02", reviewed); err != nil {
+		return DriftUnknown
+	}
+	if codeDate > reviewed {
+		return DriftStale
+	}
+	return DriftFresh
+}
+
 func sameRepo(a, b string) bool {
 	return strings.EqualFold(strings.Trim(strings.TrimSpace(a), "/"), strings.Trim(strings.TrimSpace(b), "/"))
 }
@@ -226,6 +253,14 @@ func Summarize(docs []DocValidation) Summary {
 			if r.SymbolStatus == SymbolUnsupported {
 				s.Unsupported++
 			}
+			switch r.DriftStatus {
+			case DriftFresh:
+				s.FreshRefs++
+			case DriftStale:
+				s.StaleRefs++
+			case DriftUnknown:
+				s.UnknownDrift++
+			}
 		}
 	}
 	return s
@@ -241,7 +276,10 @@ func Format(docs []DocValidation) string {
 			if r.Symbol != "" {
 				fmt.Fprintf(&b, " (%s)", r.Symbol)
 			}
-			fmt.Fprintf(&b, ": path=%s symbol=%s", r.PathStatus, r.SymbolStatus)
+			fmt.Fprintf(&b, ": path=%s symbol=%s drift=%s", r.PathStatus, r.SymbolStatus, r.DriftStatus)
+			if r.DriftReason != "" {
+				fmt.Fprintf(&b, " (%s)", r.DriftReason)
+			}
 			if r.Reason != "" {
 				fmt.Fprintf(&b, " — %s", r.Reason)
 			}
@@ -249,7 +287,7 @@ func Format(docs []DocValidation) string {
 		}
 	}
 	s := Summarize(docs)
-	fmt.Fprintf(&b, "\n%d documents, %d references: %d valid paths, %d missing, %d external, %d unverified\n",
-		s.Documents, s.References, s.ValidPaths, s.MissingPaths, s.ExternalRefs, s.Unverified)
+	fmt.Fprintf(&b, "\n%d documents, %d references: %d valid paths, %d missing, %d external, %d unverified, %d stale\n",
+		s.Documents, s.References, s.ValidPaths, s.MissingPaths, s.ExternalRefs, s.Unverified, s.StaleRefs)
 	return b.String()
 }

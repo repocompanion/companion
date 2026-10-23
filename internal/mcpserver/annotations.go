@@ -15,7 +15,7 @@ func annotationsFor(name string) *mcp.ToolAnnotations {
 	switch name {
 	case "docs_get_context":
 		return &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPtr(true)}
-	case "docs_get_guidance", "docs_list", "docs_search", "docs_read", "docs_history", "docs_diff", "docs_validate_code_refs", "docs_code_map", "docs_code_find":
+	case "docs_get_guidance", "docs_list", "docs_search", "docs_read", "docs_history", "docs_diff", "docs_validate_code_refs", "docs_stale", "docs_code_map", "docs_code_find":
 		return &mcp.ToolAnnotations{ReadOnlyHint: true}
 	case "docs_pull":
 		return &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: boolPtr(false), IdempotentHint: true, OpenWorldHint: boolPtr(true)}

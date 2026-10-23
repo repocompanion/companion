@@ -377,8 +377,8 @@ submit warnings, and in `docs_stale`, but does not block submit.
 - ctags: syntax symbols only.
 - LSP, SCIP and LSIF: parked in `idea.md`; not part of the current CLI.
 - Cross-repo symbol resolution: intentionally out of scope.
-- Go indexes must match the current checkout; non-HEAD symbol validation is
-  pending.
+- Symbol validation at non-HEAD commits uses a temporary detached worktree;
+  paths are always checked against the original repository.
 
 ## Configuration
 

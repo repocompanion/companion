@@ -120,6 +120,39 @@ func TestValidateDocsSkipsDocsWithoutRefs(t *testing.T) {
 	}
 }
 
+func TestNonHEADSymbolValidationUsesWorktree(t *testing.T) {
+	root := testRepo(t)
+	ctx := context.Background()
+	first, err := gitx.Run(ctx, root, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Advance HEAD so the first commit requires a temporary checkout.
+	file := filepath.Join(root, "internal", "consumer.go")
+	if err := os.WriteFile(file, []byte("package internal\n\ntype Consumer struct{}\n\nfunc (c Consumer) Run(arg string) {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitx.Run(ctx, root, "add", "."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitx.Run(ctx, root, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "advance"); err != nil {
+		t.Fatal(err)
+	}
+	doc := &store.Doc{Path: "projects/acme/api/patterns/x.md", Frontmatter: store.Frontmatter{ReferenceImpls: []store.ReferenceImpl{
+		{Repo: "acme/api", Path: "internal/consumer.go", Symbol: "Consumer.Run", Commit: first},
+	}}}
+	dv, err := (Validator{Root: root, Project: "acme/api", Go: &GoProvider{CacheDir: t.TempDir()}}).ValidateDoc(ctx, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dv.References) != 1 || dv.References[0].SymbolStatus != SymbolValid || dv.References[0].ResolvedPath != "internal/consumer.go" {
+		t.Fatalf("non-HEAD validation = %+v", dv.References)
+	}
+	if dv.References[0].Commit != first {
+		t.Fatalf("resolved commit = %s, want %s", dv.References[0].Commit, first)
+	}
+}
+
 func TestGoProviderIndexAndResolve(t *testing.T) {
 	root := testRepo(t)
 	provider := &GoProvider{CacheDir: t.TempDir()}

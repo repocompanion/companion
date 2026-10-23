@@ -62,17 +62,19 @@ func (p *GoProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot, er
 	if req.Commit == "" {
 		req.Commit = head
 	}
-	if req.Commit != head {
-		return nil, ErrCommitMismatch
-	}
 	if cached := p.loadCache(req); cached != nil {
 		return cached, nil
 	}
+	root, cleanup, err := checkoutAt(ctx, req.Root, req.Commit)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
 
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
 			packages.NeedSyntax | packages.NeedModule,
-		Dir:     req.Root,
+		Dir:     root,
 		Context: ctx,
 	}
 	pkgs, err := packages.Load(cfg, goAllPackages)
@@ -90,7 +92,7 @@ func (p *GoProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot, er
 		if pkg == nil || pkg.Name == "" {
 			continue
 		}
-		snapshot.Symbols = append(snapshot.Symbols, indexPackage(req.Root, req.Repo, req.Commit, pkg)...)
+		snapshot.Symbols = append(snapshot.Symbols, indexPackage(root, req.Repo, req.Commit, pkg)...)
 	}
 	if len(snapshot.Symbols) == 0 {
 		return nil, ErrUnsupported

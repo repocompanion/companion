@@ -82,12 +82,14 @@ func (p *CtagsProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot,
 	if req.Commit == "" {
 		req.Commit = head
 	}
-	if req.Commit != head {
-		return nil, ErrCommitMismatch
-	}
 	if cached := p.loadCache(req); cached != nil {
 		return cached, nil
 	}
+	root, cleanup, err := checkoutAt(ctx, req.Root, req.Commit)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
 	args := []string{
 		"--output-format=json", "--fields=+nKSt", "--extras=+q",
 		"--exclude=.git", "--exclude=node_modules", "--exclude=vendor",
@@ -95,7 +97,7 @@ func (p *CtagsProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot,
 		"-R", ".",
 	}
 	cmd := exec.CommandContext(ctx, p.Binary, args...)
-	cmd.Dir = req.Root
+	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("ctags index: %w", err)
@@ -115,7 +117,7 @@ func (p *CtagsProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot,
 		}
 		rel := tag.Path
 		if filepath.IsAbs(rel) {
-			if r, err := filepath.Rel(req.Root, rel); err == nil {
+			if r, err := filepath.Rel(root, rel); err == nil {
 				rel = r
 			}
 		}

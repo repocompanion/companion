@@ -13,6 +13,7 @@ import (
 
 	"github.com/bolacha/docsync/internal/changeset"
 	"github.com/bolacha/docsync/internal/codeindex"
+	"github.com/bolacha/docsync/internal/gitx"
 	"github.com/bolacha/docsync/internal/guidance"
 	"github.com/bolacha/docsync/internal/runtime"
 	"github.com/bolacha/docsync/internal/search"
@@ -452,6 +453,79 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		})
 	})
 
+	type codeMapIn struct {
+		Path    string `json:"path,omitempty" jsonschema:"optional file or directory filter"`
+		Kind    string `json:"kind,omitempty" jsonschema:"optional function|method|type|route"`
+		Limit   int    `json:"limit,omitempty" jsonschema:"maximum symbols; default 200"`
+		Project string `json:"project,omitempty"`
+	}
+	addTool(s, &mcp.Tool{
+		Name:        "docs_code_map",
+		Description: "Index the current Go repository and return a bounded symbol map with paths, lines, signatures and fingerprints.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in codeMapIn) (*mcp.CallToolResult, any, error) {
+		sess, err := p.session(ctx, req, in.Project)
+		if err != nil {
+			return errorResult(err)
+		}
+		provider, snap, err := currentGoIndex(ctx, sess)
+		if err != nil {
+			return errorResult(err)
+		}
+		limit := in.Limit
+		if limit <= 0 {
+			limit = 200
+		}
+		if limit > 2000 {
+			limit = 2000
+		}
+		var symbols []codeindex.Symbol
+		for _, sym := range snap.Symbols {
+			if in.Kind != "" && !strings.EqualFold(sym.Kind, in.Kind) {
+				continue
+			}
+			if in.Path != "" && !codePathMatches(sym.Path, in.Path) {
+				continue
+			}
+			symbols = append(symbols, sym)
+		}
+		total := len(symbols)
+		if len(symbols) > limit {
+			symbols = symbols[:limit]
+		}
+		return textResult(map[string]any{
+			"repo": snap.Repo, "commit": snap.Commit, "provider": provider.Name(),
+			"provider_version": provider.Version(), "symbols": symbols,
+			"count": len(symbols), "total": total,
+		})
+	})
+
+	type codeFindIn struct {
+		Symbol  string `json:"symbol"`
+		Path    string `json:"path,omitempty"`
+		Project string `json:"project,omitempty"`
+	}
+	addTool(s, &mcp.Tool{
+		Name:        "docs_code_find",
+		Description: "Resolve a Go symbol in the current repository by qualified or short name, optionally filtered by path.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in codeFindIn) (*mcp.CallToolResult, any, error) {
+		sess, err := p.session(ctx, req, in.Project)
+		if err != nil {
+			return errorResult(err)
+		}
+		provider, snap, err := currentGoIndex(ctx, sess)
+		if err != nil {
+			return errorResult(err)
+		}
+		sym, err := provider.Resolve(ctx, codeindex.ResolveRequest{
+			Repo: snap.Repo, Root: sess.Context.RepoRoot, Commit: snap.Commit,
+			Path: in.Path, Symbol: in.Symbol,
+		})
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(map[string]any{"provider": provider.Name(), "symbol": sym})
+	})
+
 	type readIn struct {
 		Path    string `json:"path" jsonschema:"document path, absolute to the store or relative to the project area"`
 		Rev     string `json:"rev,omitempty"`
@@ -656,6 +730,35 @@ func resolvePath(s *runtime.Session, p string) (string, error) {
 		return "", errors.New("project is unresolved; pass a store-relative path or set project")
 	}
 	return store.CleanRel(path.Join(area, p))
+}
+
+func currentGoIndex(ctx context.Context, sess *runtime.Session) (*codeindex.GoProvider, *codeindex.Snapshot, error) {
+	if sess.Context.RepoRoot == "" {
+		return nil, nil, errors.New("not inside a code repository")
+	}
+	commit, err := gitx.Run(ctx, sess.Context.RepoRoot, "rev-parse", "HEAD")
+	if err != nil {
+		return nil, nil, err
+	}
+	provider := codeindex.NewGoProvider()
+	snap, err := provider.Index(ctx, codeindex.IndexRequest{
+		Repo: sess.Context.Project, Root: sess.Context.RepoRoot, Commit: commit,
+	})
+	if err != nil {
+		if errors.Is(err, codeindex.ErrUnsupported) {
+			return nil, nil, errors.New("current repository has no Go packages to index")
+		}
+		return nil, nil, err
+	}
+	return provider, snap, nil
+}
+
+func codePathMatches(symbolPath, filter string) bool {
+	filter = strings.Trim(strings.ReplaceAll(filter, "\\", "/"), "/")
+	if filter == "" || filter == "." {
+		return true
+	}
+	return symbolPath == filter || strings.HasPrefix(symbolPath, strings.TrimSuffix(filter, "/")+"/")
 }
 
 func missingRequired(ctx context.Context, s *runtime.Session, area string) []string {

@@ -74,6 +74,7 @@ func NewRootCommand() *cobra.Command {
 		a.searchCmd(),
 		a.guidanceCmd(),
 		a.exportCmd(),
+		a.codeCmd(),
 		a.changeCmd(),
 		a.editCmd(),
 		a.moveCmd(),

@@ -2,6 +2,7 @@ package codeindex
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -13,11 +14,12 @@ import (
 type Validator struct {
 	Root    string
 	Project string
+	Go      *GoProvider
 }
 
 // ValidateDocs validates every reference on the supplied documents.
 func ValidateDocs(ctx context.Context, root, project string, docs []*store.Doc) ([]DocValidation, error) {
-	v := Validator{Root: root, Project: project}
+	v := Validator{Root: root, Project: project, Go: NewGoProvider()}
 	out := make([]DocValidation, 0, len(docs))
 	for _, d := range docs {
 		if d == nil || len(d.Frontmatter.ReferenceImpls) == 0 {
@@ -104,6 +106,40 @@ func (v Validator) validateRef(ctx context.Context, r Reference) ReferenceValida
 	if r.Symbol == "" {
 		return out
 	}
+	if isGoPath(r.Path) {
+		gp := v.Go
+		if gp == nil {
+			gp = NewGoProvider()
+		}
+		sym, err := gp.Resolve(ctx, ResolveRequest{
+			Repo: v.Project, Root: v.Root, Commit: commit, Path: r.Path, Symbol: r.Symbol,
+		})
+		if err == nil {
+			out.SymbolStatus = SymbolValid
+			out.Provider = gp.Name()
+			out.Reason = fmt.Sprintf("resolved %s at %s:%d", sym.Qualified, sym.Path, sym.Line)
+			if r.Fingerprint != "" && sym.Fingerprint != r.Fingerprint {
+				out.Reason += "; fingerprint mismatch (drift detection pending)"
+			}
+			return out
+		}
+		out.Provider = gp.Name()
+		switch {
+		case errors.Is(err, ErrSymbolNotFound):
+			out.SymbolStatus = SymbolMissing
+			out.Reason = "symbol not found by the Go provider"
+		case errors.Is(err, ErrSymbolAmbiguous):
+			out.SymbolStatus = SymbolUnverified
+			out.Reason = err.Error()
+		case errors.Is(err, ErrUnsupported), errors.Is(err, ErrCommitMismatch):
+			out.SymbolStatus = SymbolUnverified
+			out.Reason = err.Error()
+		default:
+			out.SymbolStatus = SymbolUnverified
+			out.Reason = "Go provider failed: " + err.Error()
+		}
+		return out
+	}
 	out.SymbolStatus = SymbolUnverified
 	out.Provider = "git-grep"
 	if _, err := gitx.Run(ctx, v.Root, "grep", "-q", "-F", "-e", r.Symbol, commit, "--", r.Path); err == nil {
@@ -119,6 +155,11 @@ func referenceFromStore(r store.ReferenceImpl) Reference {
 		Repo: r.Repo, Path: r.Path, Symbol: r.Symbol, Kind: r.Kind,
 		Ref: r.Ref, Commit: r.Commit, Fingerprint: r.Fingerprint,
 	}
+}
+
+func isGoPath(p string) bool {
+	ext := path.Ext(strings.TrimSpace(p))
+	return strings.EqualFold(ext, ".go") || ext == ""
 }
 
 func cleanRefPath(p string) (string, bool) {

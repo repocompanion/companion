@@ -151,7 +151,9 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync blame <doc>` | Line authorship |
 | `docsync restore <doc> <version>` | Open a changeset that restores a version |
 | `docsync lint [--store DIR]` | Local subset of store CI |
-| `docsync validate-code-refs [--all]` | Validate reference_impls paths and grep symbols |
+| `docsync validate-code-refs [--all]` | Validate reference_impls paths and symbols |
+| `docsync code map [--path DIR]` | Index Go symbols in the current repo |
+| `docsync code find <symbol>` | Resolve a Go symbol |
 | `docsync config get\|set\|init-repo` | Manage user and repo config |
 | `docsync registry add-repo <repo> --team <t>` | Update the org registry via PR |
 | `docsync doctor [--online]` | Check git, store, auth and mirror |
@@ -232,7 +234,7 @@ with `git mv` and validates the destination.
 
 Read: `docs_get_context`, `docs_get_guidance`, `docs_list`, `docs_search`,
 `docs_read`, `docs_history`, `docs_diff`, `docs_pull`,
-`docs_validate_code_refs`.
+`docs_validate_code_refs`, `docs_code_map`, `docs_code_find`.
 
 Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
 `docs_move`, `docs_delete`, `docs_record_decision`, `docs_propose_pattern`, `docs_scaffold_project`,
@@ -253,8 +255,17 @@ docsync validate-code-refs --all --json
 
 Paths are checked at the resolved `ref` (default `main`) in the current repo.
 References to other repos are reported as `external`; unresolved refs are
-`unverified`. Symbol checks use a semantic provider when available; currently
-they fall back to `git grep` and are explicitly marked `unverified`.
+`unverified`. For Go files, symbols are resolved with the Go provider
+(`go/packages`/`go/ast`). Other languages fall back to `git grep` and are marked
+`unverified` until more providers are added.
+
+```bash
+docsync code map --path internal/consumer
+docsync code find Consumer.Run --path internal/consumer
+```
+
+The Go index is cached under `~/.docsync/cache/code/<repo>/<commit>/` and is
+keyed by provider version.
 
 ## Configuration
 
@@ -337,8 +348,11 @@ manually against a sandbox repository.
 - Image/binary additions are a human CLI/editor action, not an MCP write.
 - Import copies files; it does not yet preserve Git history with `git mv`.
 - `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
-- Code-reference symbol validation is currently a `git grep` fallback; Go and
-  multi-language semantic providers are not implemented yet.
+- Code-reference validation is strongest for Go today; non-Go symbols use
+  `git grep` and are marked `unverified`.
+- Go indexing currently covers packages, functions, methods, types and basic
+  route calls; jobs/queues, migrations, config and tests are pending.
+- Drift detection and `docs_stale` are not implemented yet.
 - Fingerprints are validated for format but drift detection is not implemented yet.
 
 See `PLAN.md` for the full design and roadmap.

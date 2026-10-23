@@ -3,7 +3,10 @@
 // providers add symbol and semantic resolution later.
 package codeindex
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 type Reference struct {
 	Repo        string `json:"repo"`
@@ -70,22 +73,25 @@ type IndexRequest struct {
 }
 
 type Snapshot struct {
-	Repo    string
-	Commit  string
-	Symbols []Symbol
+	Repo      string   `json:"repo"`
+	Commit    string   `json:"commit"`
+	Provider  string   `json:"provider"`
+	Version   string   `json:"provider_version"`
+	IndexedAt string   `json:"indexed_at"`
+	Symbols   []Symbol `json:"symbols"`
 }
 
 type Symbol struct {
-	Repo        string
-	Commit      string
-	Package     string
-	Name        string
-	Qualified   string
-	Kind        string
-	Path        string
-	Line        int
-	Signature   string
-	Fingerprint string
+	Repo        string `json:"repo,omitempty"`
+	Commit      string `json:"commit,omitempty"`
+	Package     string `json:"package,omitempty"`
+	Name        string `json:"name"`
+	Qualified   string `json:"qualified"`
+	Kind        string `json:"kind"`
+	Path        string `json:"path"`
+	Line        int    `json:"line,omitempty"`
+	Signature   string `json:"signature,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 type ResolveRequest struct {
@@ -99,6 +105,13 @@ type ResolveRequest struct {
 // Provider is the future contract for language-specific indexing. Part 1 only
 // uses the git path/grep validator; Go, ctags, LSP and SCIP providers will
 // implement this interface without changing the validation result model.
+var (
+	ErrUnsupported     = errors.New("code index does not support this repository")
+	ErrCommitMismatch  = errors.New("code index checkout does not match the requested commit")
+	ErrSymbolNotFound  = errors.New("symbol not found")
+	ErrSymbolAmbiguous = errors.New("symbol is ambiguous")
+)
+
 type Provider interface {
 	Name() string
 	Version() string

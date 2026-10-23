@@ -13,14 +13,25 @@ import (
 )
 
 type Validator struct {
-	Root    string
-	Project string
-	Go      *GoProvider
+	Root     string
+	Project  string
+	Registry *Registry
+	Go       *GoProvider
+}
+
+func (v Validator) registry() *Registry {
+	if v.Registry != nil {
+		return v.Registry
+	}
+	if v.Go != nil {
+		return NewRegistry(v.Go)
+	}
+	return NewDefaultRegistry()
 }
 
 // ValidateDocs validates every reference on the supplied documents.
 func ValidateDocs(ctx context.Context, root, project string, docs []*store.Doc) ([]DocValidation, error) {
-	v := Validator{Root: root, Project: project, Go: NewGoProvider()}
+	v := Validator{Root: root, Project: project, Registry: NewDefaultRegistry()}
 	out := make([]DocValidation, 0, len(docs))
 	for _, d := range docs {
 		if d == nil || len(d.Frontmatter.ReferenceImpls) == 0 {
@@ -114,17 +125,26 @@ func (v Validator) validateRef(ctx context.Context, r Reference, lastReviewed st
 	if r.Symbol == "" {
 		return out
 	}
-	if isGoPath(r.Path) {
-		gp := v.Go
-		if gp == nil {
-			gp = NewGoProvider()
+	providers := v.registry().ProvidersForPath(r.Path)
+	if len(providers) == 0 {
+		out.SymbolStatus = SymbolUnverified
+		out.Provider = "git-grep"
+		if _, err := gitx.Run(ctx, v.Root, "grep", "-q", "-F", "-e", r.Symbol, commit, "--", r.Path); err == nil {
+			out.Reason = fmt.Sprintf("literal symbol match at %s; no semantic provider is available", shortCommit(commit))
+		} else {
+			out.Reason = "symbol is unverified; no semantic provider is available"
 		}
-		sym, err := gp.Resolve(ctx, ResolveRequest{
+		return out
+	}
+	missing := false
+	var lastErr error
+	for _, provider := range providers {
+		sym, err := provider.Resolve(ctx, ResolveRequest{
 			Repo: v.Project, Root: v.Root, Commit: commit, Path: r.Path, Symbol: r.Symbol,
 		})
 		if err == nil {
 			out.SymbolStatus = SymbolValid
-			out.Provider = gp.Name()
+			out.Provider = provider.Name()
 			out.Reason = fmt.Sprintf("resolved %s at %s:%d", sym.Qualified, sym.Path, sym.Line)
 			if r.Fingerprint != "" {
 				if sym.Fingerprint != r.Fingerprint {
@@ -137,30 +157,23 @@ func (v Validator) validateRef(ctx context.Context, r Reference, lastReviewed st
 			}
 			return out
 		}
-		out.Provider = gp.Name()
-		switch {
-		case errors.Is(err, ErrSymbolNotFound):
-			out.SymbolStatus = SymbolMissing
-			out.Reason = "symbol not found by the Go provider"
-		case errors.Is(err, ErrSymbolAmbiguous):
-			out.SymbolStatus = SymbolUnverified
-			out.Reason = err.Error()
-		case errors.Is(err, ErrUnsupported), errors.Is(err, ErrCommitMismatch):
-			out.SymbolStatus = SymbolUnverified
-			out.Reason = err.Error()
-		default:
-			out.SymbolStatus = SymbolUnverified
-			out.Reason = "Go provider failed: " + err.Error()
+		out.Provider = provider.Name()
+		if errors.Is(err, ErrSymbolNotFound) {
+			missing = true
+			continue
 		}
+		lastErr = err
+	}
+	if missing {
+		out.SymbolStatus = SymbolMissing
+		out.Reason = "symbol not found by an available provider"
 		return out
 	}
 	out.SymbolStatus = SymbolUnverified
-	out.Provider = "git-grep"
-	if _, err := gitx.Run(ctx, v.Root, "grep", "-q", "-F", "-e", r.Symbol, commit, "--", r.Path); err == nil {
-		out.Reason = fmt.Sprintf("literal symbol match at %s; no semantic provider is available", shortCommit(commit))
-	} else {
-		out.Reason = "symbol is unverified; no semantic provider is available"
+	if lastErr == nil {
+		lastErr = ErrUnsupported
 	}
+	out.Reason = lastErr.Error()
 	return out
 }
 
@@ -169,11 +182,6 @@ func referenceFromStore(r store.ReferenceImpl) Reference {
 		Repo: r.Repo, Path: r.Path, Symbol: r.Symbol, Kind: r.Kind,
 		Ref: r.Ref, Commit: r.Commit, Fingerprint: r.Fingerprint,
 	}
-}
-
-func isGoPath(p string) bool {
-	ext := path.Ext(strings.TrimSpace(p))
-	return strings.EqualFold(ext, ".go") || ext == ""
 }
 
 func cleanRefPath(p string) (string, bool) {

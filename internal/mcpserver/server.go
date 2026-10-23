@@ -548,13 +548,13 @@ func registerContextTools(s *mcp.Server, p *provider) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "docs_code_map",
-		Description: "Index the current Go repository and return a bounded symbol map with paths, lines, signatures and fingerprints.",
+		Description: "Index the current repository with available providers and return a bounded symbol map with paths, lines, signatures and fingerprints.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in codeMapIn) (*mcp.CallToolResult, any, error) {
 		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
-		provider, snap, err := currentGoIndex(ctx, sess)
+		_, cat, err := currentCodeIndex(ctx, sess)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -566,22 +566,26 @@ func registerContextTools(s *mcp.Server, p *provider) {
 			limit = 2000
 		}
 		var symbols []codeindex.Symbol
-		for _, sym := range snap.Symbols {
-			if in.Kind != "" && !strings.EqualFold(sym.Kind, in.Kind) {
-				continue
+		var providers []string
+		for _, snap := range cat.Snapshots {
+			providers = append(providers, snap.Provider+" "+snap.Version)
+			for _, sym := range snap.Symbols {
+				if in.Kind != "" && !strings.EqualFold(sym.Kind, in.Kind) {
+					continue
+				}
+				if in.Path != "" && !codePathMatches(sym.Path, in.Path) {
+					continue
+				}
+				symbols = append(symbols, sym)
 			}
-			if in.Path != "" && !codePathMatches(sym.Path, in.Path) {
-				continue
-			}
-			symbols = append(symbols, sym)
 		}
 		total := len(symbols)
 		if len(symbols) > limit {
 			symbols = symbols[:limit]
 		}
 		return textResult(map[string]any{
-			"repo": snap.Repo, "commit": snap.Commit, "provider": provider.Name(),
-			"provider_version": provider.Version(), "symbols": symbols,
+			"repo": cat.Repo, "commit": cat.Commit, "providers": providers,
+			"warnings": cat.Warnings, "symbols": symbols,
 			"count": len(symbols), "total": total,
 		})
 	})
@@ -593,24 +597,24 @@ func registerContextTools(s *mcp.Server, p *provider) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "docs_code_find",
-		Description: "Resolve a Go symbol in the current repository by qualified or short name, optionally filtered by path.",
+		Description: "Resolve a code symbol in the current repository by qualified or short name, optionally filtered by path.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in codeFindIn) (*mcp.CallToolResult, any, error) {
 		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
 			return errorResult(err)
 		}
-		provider, snap, err := currentGoIndex(ctx, sess)
+		reg, cat, err := currentCodeIndex(ctx, sess)
 		if err != nil {
 			return errorResult(err)
 		}
-		sym, err := provider.Resolve(ctx, codeindex.ResolveRequest{
-			Repo: snap.Repo, Root: sess.Context.RepoRoot, Commit: snap.Commit,
+		sym, err := reg.Resolve(ctx, codeindex.ResolveRequest{
+			Repo: cat.Repo, Root: sess.Context.RepoRoot, Commit: cat.Commit,
 			Path: in.Path, Symbol: in.Symbol,
 		})
 		if err != nil {
 			return errorResult(err)
 		}
-		return textResult(map[string]any{"provider": provider.Name(), "symbol": sym})
+		return textResult(map[string]any{"provider": sym.Provider, "symbol": sym})
 	})
 
 	type readIn struct {
@@ -819,7 +823,7 @@ func resolvePath(s *runtime.Session, p string) (string, error) {
 	return store.CleanRel(path.Join(area, p))
 }
 
-func currentGoIndex(ctx context.Context, sess *runtime.Session) (*codeindex.GoProvider, *codeindex.Snapshot, error) {
+func currentCodeIndex(ctx context.Context, sess *runtime.Session) (*codeindex.Registry, *codeindex.Catalog, error) {
 	if sess.Context.RepoRoot == "" {
 		return nil, nil, errors.New("not inside a code repository")
 	}
@@ -827,17 +831,17 @@ func currentGoIndex(ctx context.Context, sess *runtime.Session) (*codeindex.GoPr
 	if err != nil {
 		return nil, nil, err
 	}
-	provider := codeindex.NewGoProvider()
-	snap, err := provider.Index(ctx, codeindex.IndexRequest{
+	reg := codeindex.NewDefaultRegistry()
+	cat, err := reg.Index(ctx, codeindex.IndexRequest{
 		Repo: sess.Context.Project, Root: sess.Context.RepoRoot, Commit: commit,
 	})
 	if err != nil {
 		if errors.Is(err, codeindex.ErrUnsupported) {
-			return nil, nil, errors.New("current repository has no Go packages to index")
+			return nil, nil, errors.New("current repository has no supported code symbols to index")
 		}
 		return nil, nil, err
 	}
-	return provider, snap, nil
+	return reg, cat, nil
 }
 
 func codePathMatches(symbolPath, filter string) bool {

@@ -1,6 +1,6 @@
 // Package codeindex validates and indexes code references from docsync
-// documents. Part 1 validates paths and provides a grep fallback; language
-// providers add symbol and semantic resolution later.
+// documents. It provides path validation, a grep fallback, and optional
+// language providers (Go and Universal Ctags currently; LSP/SCIP later).
 package codeindex
 
 import (
@@ -92,6 +92,7 @@ type Snapshot struct {
 }
 
 type Symbol struct {
+	Provider    string `json:"provider,omitempty"`
 	Repo        string `json:"repo,omitempty"`
 	Commit      string `json:"commit,omitempty"`
 	Package     string `json:"package,omitempty"`
@@ -110,6 +111,13 @@ type ResolveRequest struct {
 	Commit string
 	Path   string
 	Symbol string
+}
+
+type Catalog struct {
+	Repo      string      `json:"repo"`
+	Commit    string      `json:"commit"`
+	Snapshots []*Snapshot `json:"snapshots"`
+	Warnings  []string    `json:"warnings,omitempty"`
 }
 
 // Provider is the future contract for language-specific indexing. Part 1 only

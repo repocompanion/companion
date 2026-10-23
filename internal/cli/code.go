@@ -13,13 +13,13 @@ import (
 func (a *App) codeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "code",
-		Short: "Inspect the current repository's Go code map",
+		Short: "Inspect the current repository's code map",
 	}
 	cmd.AddCommand(a.codeMapCmd(), a.codeFindCmd())
 	return cmd
 }
 
-func (a *App) codeIndex() (*codeindex.GoProvider, *codeindex.Snapshot, error) {
+func (a *App) codeIndex() (*codeindex.Registry, *codeindex.Catalog, error) {
 	s, err := a.session()
 	if err != nil {
 		return nil, nil, err
@@ -31,14 +31,14 @@ func (a *App) codeIndex() (*codeindex.GoProvider, *codeindex.Snapshot, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	p := codeindex.NewGoProvider()
-	snap, err := p.Index(context.Background(), codeindex.IndexRequest{
+	reg := codeindex.NewDefaultRegistry()
+	cat, err := reg.Index(context.Background(), codeindex.IndexRequest{
 		Repo: s.Context.Project, Root: s.Context.RepoRoot, Commit: commit,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	return p, snap, nil
+	return reg, cat, nil
 }
 
 func (a *App) codeMapCmd() *cobra.Command {
@@ -46,21 +46,25 @@ func (a *App) codeMapCmd() *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "map",
-		Short: "Print the current Go symbol map",
+		Short: "Print the current code symbol map",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, snap, err := a.codeIndex()
+			_, cat, err := a.codeIndex()
 			if err != nil {
 				return err
 			}
 			var symbols []codeindex.Symbol
-			for _, s := range snap.Symbols {
-				if kind != "" && !strings.EqualFold(s.Kind, kind) {
-					continue
+			var providers []string
+			for _, snap := range cat.Snapshots {
+				providers = append(providers, snap.Provider+" "+snap.Version)
+				for _, s := range snap.Symbols {
+					if kind != "" && !strings.EqualFold(s.Kind, kind) {
+						continue
+					}
+					if codePath != "" && !cliCodePathMatches(s.Path, codePath) {
+						continue
+					}
+					symbols = append(symbols, s)
 				}
-				if codePath != "" && !cliCodePathMatches(s.Path, codePath) {
-					continue
-				}
-				symbols = append(symbols, s)
 			}
 			total := len(symbols)
 			if limit <= 0 {
@@ -74,13 +78,13 @@ func (a *App) codeMapCmd() *cobra.Command {
 			}
 			if a.JSON {
 				return a.printJSON(map[string]any{
-					"repo": snap.Repo, "commit": snap.Commit, "provider": p.Name(),
-					"provider_version": p.Version(), "symbols": symbols,
+					"repo": cat.Repo, "commit": cat.Commit, "providers": providers,
+					"warnings": cat.Warnings, "symbols": symbols,
 					"count": len(symbols), "total": total,
 				})
 			}
 			for _, s := range symbols {
-				fmt.Printf("%s:%d  %-9s %-40s %s\n", s.Path, s.Line, s.Kind, s.Qualified, s.Signature)
+				fmt.Printf("%s:%d  %-9s %-9s %-40s %s\n", s.Path, s.Line, s.Provider, s.Kind, s.Qualified, s.Signature)
 			}
 			fmt.Printf("\n%d symbols (showing %d)\n", total, len(symbols))
 			return nil
@@ -96,10 +100,10 @@ func (a *App) codeFindCmd() *cobra.Command {
 	var codePath string
 	cmd := &cobra.Command{
 		Use:   "find <symbol>",
-		Short: "Resolve a Go symbol in the current repository",
+		Short: "Resolve a code symbol in the current repository",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, snap, err := a.codeIndex()
+			reg, cat, err := a.codeIndex()
 			if err != nil {
 				return err
 			}
@@ -107,17 +111,17 @@ func (a *App) codeFindCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			sym, err := p.Resolve(context.Background(), codeindex.ResolveRequest{
-				Repo: snap.Repo, Root: s.Context.RepoRoot, Commit: snap.Commit,
+			sym, err := reg.Resolve(context.Background(), codeindex.ResolveRequest{
+				Repo: cat.Repo, Root: s.Context.RepoRoot, Commit: cat.Commit,
 				Path: codePath, Symbol: args[0],
 			})
 			if err != nil {
 				return err
 			}
 			if a.JSON {
-				return a.printJSON(map[string]any{"provider": p.Name(), "symbol": sym})
+				return a.printJSON(map[string]any{"provider": sym.Provider, "symbol": sym})
 			}
-			fmt.Printf("%s:%d\n%s (%s)\n%s\n", sym.Path, sym.Line, sym.Qualified, sym.Kind, sym.Signature)
+			fmt.Printf("%s:%d [%s]\n%s (%s)\n%s\n", sym.Path, sym.Line, sym.Provider, sym.Qualified, sym.Kind, sym.Signature)
 			return nil
 		},
 	}

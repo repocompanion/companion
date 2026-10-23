@@ -21,7 +21,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
 - **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
-- **Reference validation**: validate `reference_impls` paths in the current repo and report grep-only symbol checks as unverified until a semantic provider is available.
+- **Reference validation**: validate `reference_impls` paths and symbols in the current repo, with Go, optional ctags and advisory drift checks.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -153,11 +153,11 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync lint [--store DIR]` | Local subset of store CI |
 | `docsync validate-code-refs [--all]` | Validate reference_impls paths, symbols and drift |
 | `docsync stale [--all]` | Show documents with stale code references |
-| `docsync code map [--path DIR]` | Index Go symbols in the current repo |
-| `docsync code find <symbol>` | Resolve a Go symbol |
+| `docsync code map [--path DIR]` | Index available code symbols in the current repo |
+| `docsync code find <symbol>` | Resolve a code symbol |
 | `docsync config get\|set\|init-repo` | Manage user and repo config |
 | `docsync registry add-repo <repo> --team <t>` | Update the org registry via PR |
-| `docsync doctor [--online]` | Check git, store, auth and mirror |
+| `docsync doctor [--online]` | Check git, store, auth, mirror and code providers |
 | `docsync mcp` | Run the MCP server on stdio |
 
 ## Exports for non-MCP agents
@@ -256,9 +256,10 @@ docsync validate-code-refs --all --json
 
 Paths are checked at the resolved `ref` (default `main`) in the current repo.
 References to other repos are reported as `external`; unresolved refs are
-`unverified`. For Go files, symbols are resolved with the Go provider
-(`go/packages`/`go/ast`). Other languages fall back to `git grep` and are marked
-`unverified` until more providers are added.
+`unverified`. Go files use the built-in Go provider (`go/packages`/`go/ast`). If
+`universal-ctags` is installed, it adds syntax symbols for TypeScript,
+JavaScript, PHP, Python, Java/Kotlin, Rust and other supported languages.
+Otherwise non-Go symbols fall back to `git grep` and are marked `unverified`.
 
 Go references are also checked for drift:
 
@@ -278,8 +279,9 @@ docsync code map --path internal/consumer
 docsync code find Consumer.Run --path internal/consumer
 ```
 
-The Go index is cached under `~/.docsync/cache/code/<repo>/<commit>/` and is
-keyed by provider version.
+`code map` and `code find` aggregate available providers. The index cache lives
+under `~/.docsync/cache/code/<repo>/<commit>/` and is keyed by provider version.
+`docsync doctor` reports whether the Go and ctags providers are available.
 
 ## Configuration
 
@@ -362,10 +364,13 @@ manually against a sandbox repository.
 - Image/binary additions are a human CLI/editor action, not an MCP write.
 - Import copies files; it does not yet preserve Git history with `git mv`.
 - `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
-- Code-reference validation is strongest for Go today; non-Go symbols use
-  `git grep` and are marked `unverified`.
+- Code-reference validation is strongest for Go; non-Go syntax symbols require
+  `universal-ctags`. Without it they use `git grep` and are marked `unverified`.
+- LSP and SCIP providers are not implemented yet.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.
+- ctags is syntax-only and language coverage depends on the installed
+  Universal Ctags build.
 - Drift warnings are advisory; submit preflight does not yet block or warn.
 - Code-change drift uses the referenced path’s latest Git date.
 - `docs_stale` only covers the current repository.

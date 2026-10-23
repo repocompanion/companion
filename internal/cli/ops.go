@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bolacha/docsync/internal/changeset"
+	"github.com/bolacha/docsync/internal/codeindex"
 	"github.com/bolacha/docsync/internal/config"
 	"github.com/bolacha/docsync/internal/gitx"
 	"github.com/bolacha/docsync/internal/lint"
@@ -307,6 +308,13 @@ func (a *App) doctorCmd() *cobra.Command {
 			add("store", rt.Store.Exists(), rt.Store.Bare)
 			add("remote", rt.Store.Remote != "" && !strings.Contains(rt.Store.Remote, "your-org"), rt.Store.Remote)
 			add("github token", rt.Forge != nil && rt.Forge.Available(), "DOCSYNC_FORGE_TOKEN, forge.token, or gh auth token")
+			add("code provider go", true, codeindex.NewGoProvider().Version())
+			ctags := codeindex.NewCtagsProvider()
+			if ctags.Available {
+				add("code provider ctags", true, ctags.Version())
+			} else {
+				add("code provider ctags", false, "install universal-ctags for non-Go symbols")
+			}
 
 			if rt.Store.Exists() {
 				rev, t, err := rt.Store.MirrorRev(context.Background())

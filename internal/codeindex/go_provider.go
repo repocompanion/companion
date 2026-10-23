@@ -42,6 +42,11 @@ func (p *GoProvider) Version() string {
 
 func (p *GoProvider) Languages() []string { return []string{"go"} }
 
+func (p *GoProvider) SupportsPath(file string) bool {
+	ext := strings.ToLower(path.Ext(strings.TrimSpace(file)))
+	return ext == ".go" || ext == ""
+}
+
 func (p *GoProvider) Capabilities() Capabilities {
 	return Capabilities{Paths: true, Symbols: true, Definitions: true, Fingerprint: true}
 }
@@ -186,14 +191,14 @@ func indexPackage(root, repo, commit string, pkg *packages.Package) []Symbol {
 					kind = "method"
 				}
 				out = append(out, Symbol{
-					Repo: repo, Commit: commit, Package: pkg.Name, Name: name,
+					Provider: "go", Repo: repo, Commit: commit, Package: pkg.Name, Name: name,
 					Qualified: qualified, Kind: kind, Path: rel,
 					Line:      pkg.Fset.Position(node.Pos()).Line,
 					Signature: signature(pkg.Fset, node.Type),
 				})
 			case *ast.TypeSpec:
 				out = append(out, Symbol{
-					Repo: repo, Commit: commit, Package: pkg.Name, Name: node.Name.Name,
+					Provider: "go", Repo: repo, Commit: commit, Package: pkg.Name, Name: node.Name.Name,
 					Qualified: pkg.Name + "." + node.Name.Name, Kind: "type", Path: rel,
 					Line:      pkg.Fset.Position(node.Pos()).Line,
 					Signature: "type " + node.Name.Name,
@@ -201,7 +206,7 @@ func indexPackage(root, repo, commit string, pkg *packages.Package) []Symbol {
 			case *ast.CallExpr:
 				if route, ok := routeName(node); ok {
 					out = append(out, Symbol{
-						Repo: repo, Commit: commit, Package: pkg.Name, Name: route,
+						Provider: "go", Repo: repo, Commit: commit, Package: pkg.Name, Name: route,
 						Qualified: pkg.Name + ".route:" + route, Kind: "route", Path: rel,
 						Line: pkg.Fset.Position(node.Pos()).Line, Signature: route,
 					})

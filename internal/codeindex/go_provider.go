@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	goIndexVersion = "go-packages-v1"
+	goIndexVersion = "go-packages-v2"
 	goAllPackages  = "./..."
 )
 

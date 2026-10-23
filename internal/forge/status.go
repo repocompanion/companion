@@ -67,6 +67,8 @@ func (c *Client) cacheStatus(number int, status PRStatus) {
 }
 
 func (c *Client) invalidateStatus(number int) {
+	c.statusMu.Lock()
+	defer c.statusMu.Unlock()
 	if c.statusCache != nil {
 		delete(c.statusCache, number)
 	}

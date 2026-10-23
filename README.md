@@ -21,7 +21,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
 - **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
-- **Reference validation**: validate `reference_impls` paths and symbols in the current repo, with Go, optional ctags/LSP and advisory drift checks.
+- **Code context**: validate `reference_impls` paths/symbols, resolve symbols with the Go provider and optional ctags/LSP, detect advisory drift, and expose `code map`, `code find` and `stale` commands plus MCP tools.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -58,6 +58,59 @@ Or:
 ```bash
 make build
 make test
+```
+
+## Optional tooling for code context
+
+Go code works without external tooling. These tools add broader validation:
+
+### Universal Ctags
+
+```bash
+# macOS
+brew install universal-ctags
+
+# Ubuntu/Debian
+sudo apt install universal-ctags
+
+# Windows
+winget install UniversalCtags.Ctags
+
+# Verify
+ctags --version
+```
+
+The first line must say `Universal Ctags`. The BSD `ctags` bundled with macOS
+does not provide JSON output and is not used.
+
+### LSP language servers
+
+```bash
+# Go
+go install golang.org/x/tools/gopls@latest
+
+# TypeScript/JavaScript
+npm install -g typescript-language-server typescript
+
+# Python
+npm install -g pyright
+# or: pipx install python-lsp-server
+
+# PHP
+npm install -g intelephense
+# or install phpactor and put it on PATH
+```
+
+For Java, install Eclipse JDT LS and put `jdtls` on `PATH`. For Kotlin, install
+`kotlin-language-server`. For Rust, install `rust-analyzer`.
+
+The LSP provider is live and current-repo-only. It is not used as a durable
+code-map index and does not run a background daemon.
+
+Verify what is available:
+
+```bash
+docsync doctor
 ```
 
 ## Quick start
@@ -246,57 +299,107 @@ Agents can never merge. `docs_change_submit` lints changed documents and keeps
 the PR as a draft on errors; only a human can use `docsync change submit
 --skip-lint`. A human merges the PR under GitHub branch protection.
 
-## Code reference validation
+## Code context
 
-```bash
-docsync validate-code-refs
-docsync validate-code-refs --path projects/acme/api/patterns/sqs.md
-docsync validate-code-refs --all --json
+Code references are declared in document frontmatter:
+
+```yaml
+reference_impls:
+  - repo: your-org/payments-api
+    path: internal/consumer/consumer.go
+    symbol: Consumer.Run        # optional
+    kind: method                # optional
+    ref: main
+    fingerprint: sha256:...     # optional
 ```
 
-Paths are checked at the resolved `ref` (default `main`) in the current repo.
-References to other repos are reported as `external`; unresolved refs are
-`unverified`. Go files use the built-in Go provider (`go/packages`/`go/ast`). If
-`universal-ctags` is installed, it adds syntax symbols for TypeScript,
-JavaScript, PHP, Python, Java/Kotlin, Rust and other supported languages.
-Otherwise non-Go symbols fall back to `git grep` and are marked `unverified`.
+Path validation works for every language. Symbol validation is provider-based:
 
-Go references are also checked for drift:
+- native Go provider: `go/packages` / `go/ast`;
+- optional `universal-ctags`: syntax symbols for many languages;
+- optional LSP: live definitions for the current repo;
+- otherwise: `git grep`, reported as `unverified`.
 
-- changed symbol fingerprints;
-- code changes after `last_reviewed`.
+Current-repo references are validated. References to another repo are reported
+as `external` and are not symbol-checked. Drift is advisory.
+
+### CLI
 
 ```bash
+# Validate all reference_impls in the current project.
+docsync validate-code-refs
+
+# Validate one document.
+docsync validate-code-refs --path projects/acme/api/patterns/sqs.md
+
+# Validate the whole store as JSON.
+docsync validate-code-refs --all --json
+
+# Show only stale references.
 docsync stale
 docsync stale --all --json
-```
 
-Drift is advisory: it appears in validation, context, guidance and `docs_stale`,
-but does not block submit.
-
-```bash
+# Inspect the current repo's symbol map.
 docsync code map --path internal/consumer
+
+# Resolve a specific symbol.
 docsync code find Consumer.Run --path internal/consumer
+
+# Show available providers.
+docsync doctor
 ```
 
-`code map` and `code find` aggregate available providers. The index cache lives
-under `~/.docsync/cache/code/<repo>/<commit>/` and is keyed by provider version.
-`docsync doctor` reports whether Go, ctags and LSP providers are available.
+`code map` uses durable providers (Go + ctags). LSP is used for live resolution
+by `code find` and validation, not to build the durable map.
 
-Optional LSP servers:
+Code indexes are cached under:
 
 ```text
-Go                     gopls
-TypeScript/JavaScript  typescript-language-server --stdio
-Python                 pyright-langserver --stdio or pylsp
-PHP                    intelephense --stdio or phpactor language-server
-Java                   jdtls
-Kotlin                 kotlin-language-server
-Rust                   rust-analyzer
+~/.docsync/cache/code/<repo>/<commit>/
 ```
 
-LSP is live and current-repo-only; it is not used as a durable index and has no
-background daemon.
+### MCP
+
+The same operations are available as read-only tools:
+
+| Tool | Purpose |
+|---|---|
+| `docs_validate_code_refs` | Validate paths, symbols, providers and drift |
+| `docs_stale` | Return documents with stale references |
+| `docs_code_map` | Return bounded Go/ctags symbols for the current repo |
+| `docs_code_find` | Resolve a symbol live through available providers |
+
+Examples:
+
+```text
+docs_validate_code_refs { "scope": "project" }
+docs_validate_code_refs { "path": "projects/acme/api/patterns/sqs.md" }
+docs_stale { "scope": "project" }
+docs_code_map { "path": "internal/consumer", "kind": "method", "limit": 100 }
+docs_code_find { "symbol": "Consumer.Run", "path": "internal/consumer" }
+```
+
+Reference validation results include:
+
+```text
+path_status    valid | missing | external | unverified | invalid
+symbol_status  valid | missing | unsupported | external | unverified
+drift_status   fresh | stale | unknown
+provider       go | ctags | lsp-<language> | git-grep
+```
+
+Drift is currently advisory. It appears in validation, context and guidance
+warnings and in `docs_stale`, but does not block submit.
+
+### Provider limits
+
+- Go definitions/symbols: native.
+- ctags: syntax symbols only.
+- LSP: definitions only; references are pending.
+- SCIP/LSIF: not implemented.
+- Cross-repo symbol resolution: intentionally out of scope.
+- Go indexes must match the current checkout; non-HEAD symbol validation is
+  pending.
 
 ## Configuration
 
@@ -379,11 +482,12 @@ manually against a sandbox repository.
 - Image/binary additions are a human CLI/editor action, not an MCP write.
 - Import copies files; it does not yet preserve Git history with `git mv`.
 - `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
-- Code-reference validation is strongest for Go; non-Go syntax symbols require
-  `universal-ctags`. Without it they use `git grep` and are marked `unverified`.
-- LSP provider supports live current-repo definitions when a language server is installed, including optional `gopls` for Go.
-- The native Go provider remains primary; gopls is an optional semantic fallback.
-- LSP references and SCIP are not implemented yet.
+- Code-reference validation is strongest for Go. Non-Go syntax symbols use
+  `universal-ctags`; live definitions use an installed LSP server. Without either,
+  they use `git grep` and are marked `unverified`.
+- The native Go provider is primary; `gopls` is an optional semantic fallback.
+- LSP supports definitions only. References and SCIP are not implemented yet.
+- Code-reference validation is not yet part of `docsync lint` or submit preflight.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.
 - ctags is syntax-only and language coverage depends on the installed
@@ -391,6 +495,7 @@ manually against a sandbox repository.
 - Drift warnings are advisory; submit preflight does not yet block or warn.
 - Code-change drift uses the referenced path’s latest Git date.
 - `docs_stale` only covers the current repository.
-- Fingerprints are compared for Go symbols; non-Go drift remains unknown.
+- Fingerprints are compared for Go and ctags symbols when available; unsupported
+  providers and path-only references may report drift as `unknown`.
 
 See `PLAN.md` for the full design and roadmap.

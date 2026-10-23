@@ -155,18 +155,27 @@ func SplitGitHubRemote(remote string) (owner, repo string, err error) {
 	return owner, repo, nil
 }
 
-var unsafeSlug = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+var (
+	unsafeSlug = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+	dotRun     = regexp.MustCompile(`\.{2,}`)
+)
 
-// Slug makes a branch/path-safe token.
+// Slug makes a branch/path-safe token. Git rejects ref components that
+// contain ".." or end in ".lock", so those are rewritten; single dots are
+// kept so existing slugs such as "v1.2" stay stable.
 func Slug(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = unsafeSlug.ReplaceAllString(s, "-")
+	s = dotRun.ReplaceAllString(s, ".")
 	s = strings.Trim(s, "-._")
-	if s == "" {
-		return "untitled"
-	}
 	if len(s) > 60 {
 		s = strings.Trim(s[:60], "-._")
+	}
+	if strings.HasSuffix(s, ".lock") {
+		s = strings.TrimSuffix(s, ".lock") + "-lock"
+	}
+	if s == "" {
+		return "untitled"
 	}
 	return s
 }

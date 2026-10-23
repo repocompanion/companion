@@ -1,6 +1,9 @@
 package gitx
 
-import "testing"
+import (
+	"os/exec"
+	"testing"
+)
 
 func TestSplitGitHubRemote(t *testing.T) {
 	cases := []struct {
@@ -24,5 +27,26 @@ func TestSplitGitHubRemote(t *testing.T) {
 	}
 	if _, _, err := SplitGitHubRemote("/tmp/store.git"); err == nil {
 		t.Fatal("expected error for a local path")
+	}
+}
+
+func TestSlugProducesValidRefComponents(t *testing.T) {
+	cases := map[string]string{
+		"Refund Flow":  "refund-flow",
+		"v1.2 notes":   "v1.2-notes",
+		"v1..v2":       "v1.v2",
+		"a...b":        "a.b",
+		"release.lock": "release-lock",
+		"..":           "untitled",
+		"   ":          "untitled",
+		"--.hidden.--": "hidden",
+	}
+	for in, want := range cases {
+		if got := Slug(in); got != want {
+			t.Errorf("Slug(%q) = %q, want %q", in, got, want)
+		}
+		if out, err := exec.Command("git", "check-ref-format", "refs/heads/docs/"+Slug(in)).CombinedOutput(); err != nil {
+			t.Errorf("Slug(%q) = %q is not a valid ref: %s", in, Slug(in), out)
+		}
 	}
 }

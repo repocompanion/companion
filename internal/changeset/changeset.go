@@ -1998,6 +1998,9 @@ func (m *Manager) remove(ctx context.Context, c state.Change) error {
 	})
 }
 
+// Adopt moves uncommitted edits in the main mirror, staged or not, into a new
+// changeset. The mirror is only reset once the changeset commit succeeds, so a
+// failure at any step leaves the edits where they were.
 func (m *Manager) Adopt(ctx context.Context, source string) (state.Change, error) {
 	status, err := gitx.Run(ctx, m.Store.Mirror, "status", "--porcelain")
 	if err != nil {
@@ -2006,17 +2009,19 @@ func (m *Manager) Adopt(ctx context.Context, source string) (state.Change, error
 	if strings.TrimSpace(status) == "" {
 		return state.Change{}, errors.New("the main mirror has no changes to adopt")
 	}
-	if strings.Contains(status, "??") {
-		return state.Change{}, errors.New("untracked files in the main mirror cannot be adopted safely; move them manually into a changeset")
+	for _, line := range strings.Split(status, "\n") {
+		if strings.HasPrefix(line, "??") {
+			return state.Change{}, errors.New("untracked files in the main mirror cannot be adopted safely; move them manually into a changeset")
+		}
 	}
-	names, err := gitx.Run(ctx, m.Store.Mirror, "diff", "--name-only")
+	// Compare against HEAD so staged edits are included. --no-renames lists
+	// both sides of a rename, so the old path's area is checked too.
+	names, err := gitx.RunRaw(ctx, m.Store.Mirror, "diff", "HEAD", "--name-only", "--no-renames", "-z")
 	if err != nil {
 		return state.Change{}, err
 	}
-	var files []string
 	var area string
-	for _, f := range strings.Split(names, "\n") {
-		f = strings.TrimSpace(f)
+	for _, f := range strings.Split(names, "\x00") {
 		if f == "" {
 			continue
 		}
@@ -2029,37 +2034,44 @@ func (m *Manager) Adopt(ctx context.Context, source string) (state.Change, error
 		} else if area != a {
 			return state.Change{}, fmt.Errorf("main mirror changes span multiple areas (%s, %s); adopt one area at a time", area, a)
 		}
-		files = append(files, f)
 	}
 	if area == "" {
 		return state.Change{}, errors.New("no tracked changes to adopt")
 	}
-	patch, err := gitx.RunRaw(ctx, m.Store.Mirror, "diff", "--binary")
+	patch, err := gitx.RunRaw(ctx, m.Store.Mirror, "diff", "HEAD", "--binary")
 	if err != nil {
 		return state.Change{}, err
 	}
+	unlock, err := m.lockArea(area)
+	if err != nil {
+		return state.Change{}, err
+	}
+	defer unlock()
 	c, err := m.Start(ctx, "adopt main mirror edits", area)
 	if err != nil {
 		return state.Change{}, err
 	}
 	if _, err := gitx.RunInput(ctx, c.Path, []byte(patch), "apply", "--3way"); err != nil {
+		_ = m.remove(ctx, c)
 		return state.Change{}, fmt.Errorf("apply patch to changeset: %w", err)
 	}
-	if err := m.Store.MakeWritable(); err != nil {
+	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
+		_ = m.remove(ctx, c)
 		return state.Change{}, err
 	}
-	_, err = gitx.Run(ctx, m.Store.Mirror, "checkout", "--", ".")
+	if err := m.Store.MakeWritable(); err != nil {
+		return c, err
+	}
+	// Every tracked change was just committed to the changeset and untracked
+	// files were refused above, so a hard reset discards nothing else.
+	_, err = gitx.Run(ctx, m.Store.Mirror, "reset", "-q", "--hard", "HEAD")
 	_ = m.Store.MakeReadOnly()
 	if err != nil {
-		return state.Change{}, fmt.Errorf("restore main mirror: %w", err)
-	}
-	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
-		return state.Change{}, err
+		return c, fmt.Errorf("edits were committed to changeset %s but the main mirror could not be restored: %w", c.ID, err)
 	}
 	return c, nil
 }
 
-// WriteFile writes a doc, validates base_rev, and commits it locally.
 func (m *Manager) WriteFile(ctx context.Context, area, rel, content, baseRev, source string) (state.Change, bool, error) {
 	unlock, err := m.lockArea(area)
 	if err != nil {

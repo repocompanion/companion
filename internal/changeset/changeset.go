@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bolacha/docsync/internal/codeindex"
 	"github.com/bolacha/docsync/internal/config"
 	"github.com/bolacha/docsync/internal/docrules"
 	"github.com/bolacha/docsync/internal/forge"
@@ -73,17 +74,20 @@ func New(s *store.Store, st *state.Store, cfg config.UserConfig, ctx *config.Con
 }
 
 type Result struct {
-	Change  state.Change `json:"change"`
-	Pushed  bool         `json:"pushed"`
-	PR      *forge.PR    `json:"pr,omitempty"`
-	Pending bool         `json:"pending"`
-	Warning string       `json:"warning,omitempty"`
-	Files   []string     `json:"files,omitempty"`
+	Change   state.Change              `json:"change"`
+	Pushed   bool                      `json:"pushed"`
+	PR       *forge.PR                 `json:"pr,omitempty"`
+	Pending  bool                      `json:"pending"`
+	Warning  string                    `json:"warning,omitempty"`
+	Warnings []string                  `json:"warnings,omitempty"`
+	Files    []string                  `json:"files,omitempty"`
+	CodeRefs []codeindex.DocValidation `json:"code_refs,omitempty"`
 }
 
 // SubmitOptions controls the final submit step.
 type SubmitOptions struct {
-	SkipLint bool
+	SkipLint     bool
+	SkipCodeRefs bool
 }
 
 // LintError is returned when changed documents fail validation. The issues are
@@ -94,6 +98,25 @@ type LintError struct {
 
 func (e *LintError) Error() string {
 	return "submit blocked: documentation lint failed\n" + lint.Format(&e.Result)
+}
+
+// CodeRefsError is returned when changed documents reference missing paths or
+// symbols. Stale/unverified references are warnings, not errors.
+type CodeRefsError struct {
+	Issues []codeindex.PreflightIssue `json:"issues"`
+	Docs   []codeindex.DocValidation  `json:"docs"`
+}
+
+func (e *CodeRefsError) Error() string {
+	var b strings.Builder
+	b.WriteString("submit blocked: code-reference preflight failed")
+	for _, i := range e.Issues {
+		if i.Level != "error" {
+			continue
+		}
+		fmt.Fprintf(&b, "\n  %s: %s", i.Doc, i.Message)
+	}
+	return b.String()
 }
 
 // Overlay is a read view of one or more areas with the active changesets
@@ -986,6 +1009,14 @@ func (m *Manager) SubmitWithOptions(ctx context.Context, idOrArea, summary, sour
 			return res, err
 		}
 	}
+	if !opts.SkipCodeRefs {
+		refs, warnings, err := m.validateCodeRefs(ctx, c)
+		res.CodeRefs = refs
+		res.Warnings = append(res.Warnings, warnings...)
+		if err != nil {
+			return res, err
+		}
+	}
 	if m.Forge == nil || !m.Forge.Available() {
 		return res, errors.New("cannot submit without GitHub authentication")
 	}
@@ -1062,6 +1093,56 @@ func (m *Manager) lintChangeset(ctx context.Context, c state.Change) error {
 		return &LintError{Result: *res}
 	}
 	return nil
+}
+
+// validateCodeRefs checks changed docs against the current code repository.
+// It returns warnings for advisory states and an error for missing paths or
+// missing symbols that a provider claimed to support.
+func (m *Manager) validateCodeRefs(ctx context.Context, c state.Change) ([]codeindex.DocValidation, []string, error) {
+	files := m.files(ctx, c)
+	if len(files) == 0 {
+		return nil, nil, nil
+	}
+	docs, err := lint.LoadDocs(c.Path, files)
+	if err != nil {
+		return nil, nil, err
+	}
+	hasRefs := false
+	for _, d := range docs {
+		if d != nil && len(d.Frontmatter.ReferenceImpls) > 0 {
+			hasRefs = true
+			break
+		}
+	}
+	if !hasRefs {
+		return nil, nil, nil
+	}
+	root, project := "", ""
+	if m.Ctx != nil {
+		root, project = m.Ctx.RepoRoot, m.Ctx.Project
+	}
+	if strings.TrimSpace(root) == "" {
+		return nil, []string{"code references were not validated: no code repository detected"}, nil
+	}
+	validated, err := codeindex.ValidateDocs(ctx, root, project, docs)
+	if err != nil {
+		return nil, nil, err
+	}
+	issues := codeindex.Preflight(validated)
+	if codeindex.HasPreflightErrors(issues) {
+		return validated, preflightWarnings(issues), &CodeRefsError{Issues: issues, Docs: validated}
+	}
+	return validated, preflightWarnings(issues), nil
+}
+
+func preflightWarnings(issues []codeindex.PreflightIssue) []string {
+	var out []string
+	for _, i := range issues {
+		if i.Level == "warning" {
+			out = append(out, fmt.Sprintf("%s: %s", i.Doc, i.Message))
+		}
+	}
+	return out
 }
 
 func (m *Manager) Reopen(ctx context.Context, idOrArea string) (state.Change, error) {

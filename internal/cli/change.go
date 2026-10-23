@@ -206,7 +206,7 @@ func (a *App) changeSyncCmd() *cobra.Command {
 
 func (a *App) changeSubmitCmd() *cobra.Command {
 	var summary string
-	var skipLint bool
+	var skipLint, skipCodeRefs bool
 	cmd := &cobra.Command{
 		Use:   "submit [id]",
 		Short: "Sync, rebase on main, mark the PR ready and freeze the changeset",
@@ -216,7 +216,7 @@ func (a *App) changeSubmitCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := s.Manager.SubmitWithOptions(context.Background(), firstArg(args), summary, "cli", changeset.SubmitOptions{SkipLint: skipLint})
+			res, err := s.Manager.SubmitWithOptions(context.Background(), firstArg(args), summary, "cli", changeset.SubmitOptions{SkipLint: skipLint, SkipCodeRefs: skipCodeRefs})
 			if err != nil {
 				if pendingNote(err) {
 					printResult(res)
@@ -234,6 +234,7 @@ func (a *App) changeSubmitCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&summary, "message", "m", "", "PR title summary")
 	cmd.Flags().BoolVar(&skipLint, "skip-lint", false, "mark ready even if changed documents have lint errors")
+	cmd.Flags().BoolVar(&skipCodeRefs, "skip-code-refs", false, "mark ready even if code-reference preflight fails")
 	return cmd
 }
 
@@ -392,6 +393,9 @@ func printResult(r changeset.Result) {
 	}
 	if r.Warning != "" {
 		fmt.Printf("  warning  %s\n", r.Warning)
+	}
+	for _, w := range r.Warnings {
+		fmt.Printf("  warning  %s\n", w)
 	}
 }
 

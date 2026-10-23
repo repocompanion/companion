@@ -276,7 +276,7 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "docs_change_submit",
-		Description: "Sync, lint changed docs, rebase on main if needed, write the PR description, mark the PR ready and freeze the changeset. Lint errors keep the PR draft. Refuses if already ready.",
+		Description: "Sync, lint changed docs, preflight code references, rebase on main if needed, write the PR description, mark the PR ready and freeze the changeset. Lint/code-reference errors keep the PR draft. Refuses if already ready.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in submitIn) (*mcp.CallToolResult, any, error) {
 		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
@@ -290,6 +290,15 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 					"ok": false, "error": "lint_failed", "issues": lintErr.Result.Issues,
 					"docs":   lintErr.Result.Docs,
 					"hint":   "fix the errors, or a human can run `docsync change submit --skip-lint`",
+					"result": res,
+				})
+			}
+			var codeErr *changeset.CodeRefsError
+			if errors.As(err, &codeErr) {
+				return jsonErrorResult(map[string]any{
+					"ok": false, "error": "code_refs_failed", "issues": codeErr.Issues,
+					"docs":   codeErr.Docs,
+					"hint":   "fix missing paths/symbols; stale or unverified references are warnings",
 					"result": res,
 				})
 			}

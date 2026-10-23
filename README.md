@@ -41,7 +41,8 @@ This is an early, working implementation of `PLAN.md`.
 - **Guidance ranking** for patterns, ADRs and standards with project → team →
   org precedence and explicit `overrides`.
 - **Shared validation** in `internal/docrules` for MCP writes, lint, templates
-  and submit preflight; `change submit` keeps the PR draft when lint fails.
+  and submit preflight; `change submit` keeps the PR draft when lint or
+  code-reference checks fail.
 - **Lint** for frontmatter, canonical layout, broken links, duplicate IDs and likely secrets.
 
 ## Build
@@ -162,7 +163,7 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync change start "<topic>"` | Start a changeset |
 | `docsync change join <PR#>` | Join a shared changeset |
 | `docsync change sync [id]` | Commit, integrate, push, create/update draft PR |
-| `docsync change submit [id] [--skip-lint]` | Lint, rebase on main, mark ready, freeze |
+| `docsync change submit [id] [--skip-lint] [--skip-code-refs]` | Lint, validate code refs, rebase, mark ready, freeze |
 | `docsync change reopen [id]` | Return a ready PR to draft |
 | `docsync change rebase [id]` | Resolve conflicts with the remote branch/main |
 | `docsync change cleanup [id]` | Remove a merged/closed changeset |
@@ -268,9 +269,12 @@ Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
 `docs_set_context`, `docs_change_sync`, `docs_change_submit`,
 `docs_change_reopen`, `docs_change_status`, `docs_review_comments`.
 
-Agents can never merge. `docs_change_submit` lints changed documents and keeps
-the PR as a draft on errors; only a human can use `docsync change submit
---skip-lint`. A human merges the PR under GitHub branch protection.
+Agents can never merge. `docs_change_submit` lints changed documents and
+validates their code references, keeping the PR as a draft on errors. Missing
+reference paths and missing symbols block submit; stale, external or unverified
+references are warnings. Only a human can bypass these checks with
+`docsync change submit --skip-lint` or `--skip-code-refs`. A human merges the PR
+under GitHub branch protection.
 
 ## Code context
 
@@ -457,12 +461,13 @@ manually against a sandbox repository.
   `universal-ctags`; without it they use `git grep` and are marked `unverified`.
 - The native Go provider is the only semantic provider.
 - LSP, SCIP and LSIF are parked in `idea.md`; they are not part of the current CLI.
-- Code-reference validation is not yet part of `docsync lint` or submit preflight.
+- Code-reference validation is not yet part of `docsync lint`; it runs during
+  `change submit` and through `validate-code-refs`.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.
 - ctags is syntax-only and language coverage depends on the installed
   Universal Ctags build.
-- Drift warnings are advisory; submit preflight does not yet block or warn.
+- Drift warnings are advisory. Submit warns but never blocks on drift.
 - Code-change drift uses the referenced path’s latest Git date.
 - `docs_stale` only covers the current repository.
 - Fingerprints are compared for Go and ctags symbols when available;

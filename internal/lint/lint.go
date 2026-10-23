@@ -42,9 +42,9 @@ func RunDir(s *store.Store, dir string) (*Result, error) {
 	return runDocs(s, docs), nil
 }
 
-// RunFiles lints a specific set of store-relative files. Missing files are
+// LoadDocs parses a specific set of store-relative files. Missing files are
 // skipped so deleted documents do not fail a submit preflight.
-func RunFiles(root string, rels []string) (*Result, error) {
+func LoadDocs(root string, rels []string) ([]*store.Doc, error) {
 	s := &store.Store{Mirror: root}
 	seen := map[string]bool{}
 	var docs []*store.Doc
@@ -66,11 +66,26 @@ func RunFiles(root string, rels []string) (*Result, error) {
 		}
 		d, err := store.ParseDoc(clean, raw)
 		if err != nil {
-			return &Result{Docs: 1, Issues: []Issue{{Level: "error", Path: clean, Message: err.Error()}}}, nil
+			return nil, fmt.Errorf("%s: %w", clean, err)
 		}
 		docs = append(docs, d)
 	}
-	return runDocs(s, docs), nil
+	return docs, nil
+}
+
+// RunFiles lints a specific set of store-relative files. Missing files are
+// skipped so deleted documents do not fail a submit preflight.
+func RunFiles(root string, rels []string) (*Result, error) {
+	docs, err := LoadDocs(root, rels)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &Result{}, nil
+		}
+		// Keep malformed frontmatter as a lint error rather than a hard command
+		// failure. The path is included in the wrapped error.
+		return &Result{Docs: 1, Issues: []Issue{{Level: "error", Path: errorPath(err), Message: err.Error()}}}, nil
+	}
+	return runDocs(&store.Store{Mirror: root}, docs), nil
 }
 
 func runDocs(s *store.Store, docs []*store.Doc) *Result {
@@ -153,6 +168,14 @@ func checkLinks(s *store.Store, d *store.Doc, res *Result) {
 			}
 		}
 	}
+}
+
+func errorPath(err error) string {
+	msg := err.Error()
+	if i := strings.Index(msg, ": "); i > 0 {
+		return msg[:i]
+	}
+	return ""
 }
 
 // Format renders issues for humans.

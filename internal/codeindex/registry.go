@@ -18,6 +18,9 @@ func NewRegistry(providers ...Provider) *Registry {
 
 func NewDefaultRegistry() *Registry {
 	providers := []Provider{NewGoProvider()}
+	if scip := NewSCIPProvider(); scip != nil && scip.Available() {
+		providers = append(providers, scip)
+	}
 	if lsp := NewLSPProvider(); lsp != nil && lsp.Available {
 		providers = append(providers, lsp)
 	}
@@ -71,24 +74,24 @@ func (r *Registry) Index(ctx context.Context, req IndexRequest) (*Catalog, error
 	if len(cat.Snapshots) == 0 {
 		return cat, ErrUnsupported
 	}
-	// When the Go provider indexed a file, prefer its semantic symbols over
-	// ctags' syntax duplicates. ctags still covers non-Go files.
-	goPaths := map[string]bool{}
+	// Prefer semantic provider symbols over ctags syntax duplicates for paths
+	// covered by Go or SCIP. ctags still covers other files/languages.
+	preferredPaths := map[string]bool{}
 	for _, snap := range cat.Snapshots {
-		if snap.Provider != "go" {
+		if snap.Provider != "go" && snap.Provider != "scip" {
 			continue
 		}
 		for _, sym := range snap.Symbols {
-			goPaths[sym.Path] = true
+			preferredPaths[sym.Path] = true
 		}
 	}
 	for i, snap := range cat.Snapshots {
-		if snap.Provider != "ctags" || len(goPaths) == 0 {
+		if snap.Provider != "ctags" || len(preferredPaths) == 0 {
 			continue
 		}
 		filtered := make([]Symbol, 0, len(snap.Symbols))
 		for _, sym := range snap.Symbols {
-			if strings.HasSuffix(strings.ToLower(sym.Path), ".go") && goPaths[sym.Path] {
+			if preferredPaths[sym.Path] {
 				continue
 			}
 			filtered = append(filtered, sym)

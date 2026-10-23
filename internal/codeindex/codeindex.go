@@ -94,6 +94,7 @@ type Snapshot struct {
 
 type Symbol struct {
 	Provider    string `json:"provider,omitempty"`
+	SCIP        string `json:"scip,omitempty"`
 	Repo        string `json:"repo,omitempty"`
 	Commit      string `json:"commit,omitempty"`
 	Package     string `json:"package,omitempty"`

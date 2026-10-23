@@ -83,6 +83,19 @@ ctags --version
 The first line must say `Universal Ctags`. The BSD `ctags` bundled with macOS
 does not provide JSON output and is not used.
 
+### SCIP index
+
+SCIP is a durable external index format. Generate an index with your language's
+SCIP indexer, then point docsync at it:
+
+```bash
+export DOCSYNC_SCIP_INDEX=/absolute/path/to/index.scip
+# or place index.scip at the repository root
+```
+
+When present, SCIP is used for durable definitions and references before LSP or
+ctags. It is not generated automatically. LSIF is not implemented yet.
+
 ### LSP language servers
 
 ```bash
@@ -354,8 +367,9 @@ docsync code refs Consumer.Run --path internal/consumer --include-declaration
 docsync doctor
 ```
 
-`code map` uses durable providers (Go + ctags). LSP is used for live resolution
-by `code find` and validation, not to build the durable map.
+`code map` uses durable providers (Go, ctags and optional SCIP). LSP is used
+for live resolution by `code find`/`code refs` and validation, not to build the
+durable map.
 
 Code indexes are cached under:
 
@@ -403,7 +417,9 @@ warnings and in `docs_stale`, but does not block submit.
 - Go definitions/symbols: native.
 - ctags: syntax symbols only.
 - LSP: definitions and references when a server is installed.
-- SCIP/LSIF: not implemented.
+- SCIP: durable definitions/references when `DOCSYNC_SCIP_INDEX` or
+  `index.scip` is available.
+- LSIF: not implemented.
 - Cross-repo symbol resolution: intentionally out of scope.
 - Go indexes must match the current checkout; non-HEAD symbol validation is
   pending.
@@ -493,7 +509,9 @@ manually against a sandbox repository.
   `universal-ctags`; live definitions use an installed LSP server. Without either,
   they use `git grep` and are marked `unverified`.
 - The native Go provider is primary; `gopls` is an optional semantic fallback.
-- LSP supports definitions and references. SCIP is not implemented yet.
+- LSP supports definitions and references.
+- SCIP is supported through a prebuilt index; SCIP generation is external and
+  LSIF is not implemented yet.
 - Code-reference validation is not yet part of `docsync lint` or submit preflight.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.
@@ -502,7 +520,8 @@ manually against a sandbox repository.
 - Drift warnings are advisory; submit preflight does not yet block or warn.
 - Code-change drift uses the referenced path’s latest Git date.
 - `docs_stale` only covers the current repository.
-- Fingerprints are compared for Go and ctags symbols when available; unsupported
-  providers and path-only references may report drift as `unknown`.
+- Fingerprints are compared for Go, ctags and SCIP symbols when available;
+  unsupported providers and path-only references may report drift as `unknown`.
+- SCIP index freshness is not verified against the current checkout.
 
 See `PLAN.md` for the full design and roadmap.

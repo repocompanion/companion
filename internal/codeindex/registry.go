@@ -68,6 +68,32 @@ func (r *Registry) Index(ctx context.Context, req IndexRequest) (*Catalog, error
 	if len(cat.Snapshots) == 0 {
 		return cat, ErrUnsupported
 	}
+	// When the Go provider indexed a file, prefer its semantic symbols over
+	// ctags' syntax duplicates. ctags still covers non-Go files.
+	goPaths := map[string]bool{}
+	for _, snap := range cat.Snapshots {
+		if snap.Provider != "go" {
+			continue
+		}
+		for _, sym := range snap.Symbols {
+			goPaths[sym.Path] = true
+		}
+	}
+	for i, snap := range cat.Snapshots {
+		if snap.Provider != "ctags" || len(goPaths) == 0 {
+			continue
+		}
+		filtered := make([]Symbol, 0, len(snap.Symbols))
+		for _, sym := range snap.Symbols {
+			if strings.HasSuffix(strings.ToLower(sym.Path), ".go") && goPaths[sym.Path] {
+				continue
+			}
+			filtered = append(filtered, sym)
+		}
+		copySnap := *snap
+		copySnap.Symbols = filtered
+		cat.Snapshots[i] = &copySnap
+	}
 	return cat, nil
 }
 

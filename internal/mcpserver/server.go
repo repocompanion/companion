@@ -617,34 +617,6 @@ func registerContextTools(s *mcp.Server, p *provider) {
 		return textResult(map[string]any{"provider": sym.Provider, "symbol": sym})
 	})
 
-	type codeRefsIn struct {
-		Symbol             string `json:"symbol"`
-		Path               string `json:"path,omitempty"`
-		IncludeDeclaration bool   `json:"include_declaration,omitempty"`
-		Project            string `json:"project,omitempty"`
-	}
-	addTool(s, &mcp.Tool{
-		Name:        "docs_code_refs",
-		Description: "Find references to a symbol in the current repo using an available LSP provider.",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in codeRefsIn) (*mcp.CallToolResult, any, error) {
-		sess, err := p.session(ctx, req, in.Project)
-		if err != nil {
-			return errorResult(err)
-		}
-		reg, commit, err := currentCodeRegistry(ctx, sess)
-		if err != nil {
-			return errorResult(err)
-		}
-		res, err := reg.References(ctx, codeindex.ResolveRequest{
-			Repo: sess.Context.Project, Root: sess.Context.RepoRoot, Commit: commit,
-			Path: in.Path, Symbol: in.Symbol,
-		}, in.IncludeDeclaration)
-		if err != nil {
-			return errorResult(err)
-		}
-		return textResult(map[string]any{"symbol": in.Symbol, "provider": res.Provider, "locations": res.Locations, "count": len(res.Locations)})
-	})
-
 	type readIn struct {
 		Path    string `json:"path" jsonschema:"document path, absolute to the store or relative to the project area"`
 		Rev     string `json:"rev,omitempty"`

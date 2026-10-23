@@ -18,12 +18,6 @@ func NewRegistry(providers ...Provider) *Registry {
 
 func NewDefaultRegistry() *Registry {
 	providers := []Provider{NewGoProvider()}
-	if scip := NewSCIPProvider(); scip != nil && scip.Available() {
-		providers = append(providers, scip)
-	}
-	if lsp := NewLSPProvider(); lsp != nil && lsp.Available {
-		providers = append(providers, lsp)
-	}
 	if c := NewCtagsProvider(); c != nil && c.Available {
 		providers = append(providers, c)
 	}
@@ -74,11 +68,11 @@ func (r *Registry) Index(ctx context.Context, req IndexRequest) (*Catalog, error
 	if len(cat.Snapshots) == 0 {
 		return cat, ErrUnsupported
 	}
-	// Prefer semantic provider symbols over ctags syntax duplicates for paths
-	// covered by Go or SCIP. ctags still covers other files/languages.
+	// Prefer Go semantic symbols over ctags syntax duplicates for Go paths.
+	// ctags still covers other files/languages.
 	preferredPaths := map[string]bool{}
 	for _, snap := range cat.Snapshots {
-		if snap.Provider != "go" && snap.Provider != "scip" {
+		if snap.Provider != "go" {
 			continue
 		}
 		for _, sym := range snap.Symbols {
@@ -114,37 +108,6 @@ func (r *Registry) Resolve(ctx context.Context, req ResolveRequest) (*Symbol, er
 		sym, err := provider.Resolve(ctx, req)
 		if err == nil {
 			return sym, nil
-		}
-		if errors.Is(err, ErrSymbolNotFound) {
-			missing = true
-			continue
-		}
-		lastErr = err
-	}
-	if missing {
-		return nil, ErrSymbolNotFound
-	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, ErrUnsupported
-}
-
-func (r *Registry) References(ctx context.Context, req ResolveRequest, includeDeclaration bool) (*ReferenceResult, error) {
-	providers := r.ProvidersForPath(req.Path)
-	if len(providers) == 0 {
-		return nil, ErrUnsupported
-	}
-	missing := false
-	var lastErr error
-	for _, provider := range providers {
-		rp, ok := provider.(ReferenceProvider)
-		if !ok {
-			continue
-		}
-		locs, err := rp.References(ctx, req, includeDeclaration)
-		if err == nil {
-			return &ReferenceResult{Provider: provider.Name(), Locations: locs}, nil
 		}
 		if errors.Is(err, ErrSymbolNotFound) {
 			missing = true

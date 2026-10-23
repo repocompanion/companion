@@ -21,7 +21,7 @@ This is an early, working implementation of `PLAN.md`.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
 - **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
-- **Code context**: validate `reference_impls` paths/symbols, resolve symbols with Go, optional ctags/LSP and durable SCIP indexes, detect advisory drift, and expose `code map`, `code find`, `code refs` and `stale` commands plus MCP tools.
+- **Code context**: validate `reference_impls` paths/symbols, resolve symbols with the native Go provider and optional ctags, detect advisory drift, and expose `code map`, `code find` and `stale` commands plus MCP tools.
 - **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
@@ -83,124 +83,8 @@ ctags --version
 The first line must say `Universal Ctags`. The BSD `ctags` bundled with macOS
 does not provide JSON output and is not used.
 
-### SCIP index
-
-SCIP is a durable external index format. There is no single universal SCIP
-binary; install the indexer for each language you need.
-
-Generate `index.scip` from the repository root, then either place it there or
-point docsync at it:
-
-```bash
-# Option A: index.scip in the repository root
-scip-go
-
-# Option B: explicit path
-export DOCSYNC_SCIP_INDEX=/absolute/path/to/index.scip
-```
-
-Supported indexers:
-
-#### Go
-
-```bash
-go install github.com/scip-code/scip-go/cmd/scip-go@latest
-cd path/to/repo
-scip-go
-```
-
-#### TypeScript / JavaScript
-
-```bash
-npm install -g @sourcegraph/scip-typescript
-cd path/to/repo
-scip-typescript index
-# JavaScript only:
-scip-typescript index --infer-tsconfig
-```
-
-#### Python
-
-```bash
-npm install -g @sourcegraph/scip-python
-cd path/to/repo
-scip-python index . --project-name=my-project
-```
-
-Run it inside the virtual environment that contains the project’s dependencies.
-
-#### Java / Kotlin
-
-The Java/Kotlin indexer is distributed as a Docker image or a Java launcher:
-
-```bash
-docker run --rm -v "$PWD:/sources" \
-  ghcr.io/scip-code/scip-java:latest scip-java index
-```
-
-See the [`scip-java` getting-started guide](https://github.com/sourcegraph/scip-java/blob/main/docs/getting-started.md)
-for the Coursier/fat-jar installation options.
-
-#### Rust
-
-```bash
-rustup component add rust-analyzer
-cd path/to/repo
-rust-analyzer scip .
-```
-
-`scip-rust` also provides a wrapper and Docker image if preferred.
-
-#### PHP
-
-There is no maintained Sourcegraph SCIP indexer for PHP in the current
-ecosystem. Use the PHP LSP server or ctags for PHP symbols.
-
-Once `index.scip` exists, docsync uses it automatically for durable definitions
-and references, before LSP or ctags. It is not generated automatically by
-docsync, and LSIF is not implemented yet.
-
-Verify:
-
-```bash
-docsync doctor
-docsync code map
-docsync code find handler --path app.ts
-docsync code refs handler --path app.ts --include-declaration
-```
-
-MCP uses the same index when the MCP server starts with `DOCSYNC_SCIP_INDEX` in
-its environment.
-
-### LSP language servers
-
-```bash
-# Go
-go install golang.org/x/tools/gopls@latest
-
-# TypeScript/JavaScript
-npm install -g typescript-language-server typescript
-
-# Python
-npm install -g pyright
-# or: pipx install python-lsp-server
-
-# PHP
-npm install -g intelephense
-# or install phpactor and put it on PATH
-```
-
-For Java, install Eclipse JDT LS and put `jdtls` on `PATH`. For Kotlin, install
-`kotlin-language-server`. For Rust, install `rust-analyzer`.
-
-The LSP provider is live and current-repo-only. It is not used as a durable
-code-map index and does not run a background daemon.
-
-Verify what is available:
-
-```bash
-docsync doctor
-```
+LSP and SCIP providers were prototyped and are now parked in `idea.md`. They
+are not part of the current CLI surface.
 
 ## Quick start
 
@@ -297,7 +181,6 @@ Cursor (`~/.cursor/mcp.json`):
 | `docsync stale [--all]` | Show documents with stale code references |
 | `docsync code map [--path DIR]` | Index available code symbols in the current repo |
 | `docsync code find <symbol>` | Resolve a code symbol |
-| `docsync code refs <symbol>` | Find LSP references to a symbol |
 | `docsync config get\|set\|init-repo` | Manage user and repo config |
 | `docsync registry add-repo <repo> --team <t>` | Update the org registry via PR |
 | `docsync doctor [--online]` | Check git, store, auth, mirror and code providers |
@@ -378,8 +261,7 @@ with `git mv` and validates the destination.
 
 Read: `docs_get_context`, `docs_get_guidance`, `docs_list`, `docs_search`,
 `docs_read`, `docs_history`, `docs_diff`, `docs_pull`,
-`docs_validate_code_refs`, `docs_stale`, `docs_code_map`, `docs_code_find`,
-`docs_code_refs`.
+`docs_validate_code_refs`, `docs_stale`, `docs_code_map`, `docs_code_find`.
 
 Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
 `docs_move`, `docs_delete`, `docs_record_decision`, `docs_propose_pattern`, `docs_scaffold_project`,
@@ -408,7 +290,6 @@ Path validation works for every language. Symbol validation is provider-based:
 
 - native Go provider: `go/packages` / `go/ast`;
 - optional `universal-ctags`: syntax symbols for many languages;
-- optional LSP: live definitions for the current repo;
 - otherwise: `git grep`, reported as `unverified`.
 
 Current-repo references are validated. References to another repo are reported
@@ -436,16 +317,12 @@ docsync code map --path internal/consumer
 # Resolve a specific symbol.
 docsync code find Consumer.Run --path internal/consumer
 
-# Find references to a symbol through LSP.
-docsync code refs Consumer.Run --path internal/consumer --include-declaration
-
 # Show available providers.
 docsync doctor
 ```
 
-`code map` uses durable providers (Go, ctags and optional SCIP). LSP is used
-for live resolution by `code find`/`code refs` and validation, not to build the
-durable map.
+`code map` uses the native Go provider and optional ctags. Non-Go symbols use
+ctags when installed, otherwise `git grep` as `unverified`.
 
 Code indexes are cached under:
 
@@ -461,9 +338,8 @@ The same operations are available as read-only tools:
 |---|---|
 | `docs_validate_code_refs` | Validate paths, symbols, providers and drift |
 | `docs_stale` | Return documents with stale references |
-| `docs_code_map` | Return bounded Go/ctags/SCIP symbols for the current repo |
-| `docs_code_find` | Resolve a symbol live through available providers |
-| `docs_code_refs` | Find references through SCIP or an available LSP provider |
+| `docs_code_map` | Return bounded Go/ctags symbols for the current repo |
+| `docs_code_find` | Resolve a symbol through available providers |
 
 Examples:
 
@@ -473,7 +349,6 @@ docs_validate_code_refs { "path": "projects/acme/api/patterns/sqs.md" }
 docs_stale { "scope": "project" }
 docs_code_map { "path": "internal/consumer", "kind": "method", "limit": 100 }
 docs_code_find { "symbol": "Consumer.Run", "path": "internal/consumer" }
-docs_code_refs { "symbol": "Consumer.Run", "path": "internal/consumer", "include_declaration": true }
 ```
 
 Reference validation results include:
@@ -482,7 +357,7 @@ Reference validation results include:
 path_status    valid | missing | external | unverified | invalid
 symbol_status  valid | missing | unsupported | external | unverified
 drift_status   fresh | stale | unknown
-provider       go | ctags | lsp-<language> | git-grep
+provider       go | ctags | git-grep
 ```
 
 Drift is currently advisory. It appears in validation, context and guidance
@@ -492,10 +367,7 @@ warnings and in `docs_stale`, but does not block submit.
 
 - Go definitions/symbols: native.
 - ctags: syntax symbols only.
-- LSP: definitions and references when a server is installed.
-- SCIP: durable definitions/references when `DOCSYNC_SCIP_INDEX` or
-  `index.scip` is available.
-- LSIF: not implemented.
+- LSP, SCIP and LSIF: parked in `idea.md`; not part of the current CLI.
 - Cross-repo symbol resolution: intentionally out of scope.
 - Go indexes must match the current checkout; non-HEAD symbol validation is
   pending.
@@ -582,12 +454,9 @@ manually against a sandbox repository.
 - Import copies files; it does not yet preserve Git history with `git mv`.
 - `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
 - Code-reference validation is strongest for Go. Non-Go syntax symbols use
-  `universal-ctags`; live definitions use an installed LSP server. Without either,
-  they use `git grep` and are marked `unverified`.
-- The native Go provider is primary; `gopls` is an optional semantic fallback.
-- LSP supports definitions and references.
-- SCIP is supported through a prebuilt index; SCIP generation is external and
-  LSIF is not implemented yet.
+  `universal-ctags`; without it they use `git grep` and are marked `unverified`.
+- The native Go provider is the only semantic provider.
+- LSP, SCIP and LSIF are parked in `idea.md`; they are not part of the current CLI.
 - Code-reference validation is not yet part of `docsync lint` or submit preflight.
 - Go indexing currently covers packages, functions, methods, types and basic
   route calls; jobs/queues, migrations, config and tests are pending.
@@ -596,8 +465,7 @@ manually against a sandbox repository.
 - Drift warnings are advisory; submit preflight does not yet block or warn.
 - Code-change drift uses the referenced path’s latest Git date.
 - `docs_stale` only covers the current repository.
-- Fingerprints are compared for Go, ctags and SCIP symbols when available;
+- Fingerprints are compared for Go and ctags symbols when available;
   unsupported providers and path-only references may report drift as `unknown`.
-- SCIP index freshness is not verified against the current checkout.
 
 See `PLAN.md` for the full design and roadmap.

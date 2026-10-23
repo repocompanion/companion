@@ -16,7 +16,7 @@ func (a *App) codeCmd() *cobra.Command {
 		Use:   "code",
 		Short: "Inspect the current repository's code map",
 	}
-	cmd.AddCommand(a.codeMapCmd(), a.codeFindCmd(), a.codeRefsCmd())
+	cmd.AddCommand(a.codeMapCmd(), a.codeFindCmd())
 	return cmd
 }
 
@@ -135,41 +135,6 @@ func (a *App) codeFindCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&codePath, "path", "", "file or directory filter")
-	return cmd
-}
-
-func (a *App) codeRefsCmd() *cobra.Command {
-	var codePath string
-	var includeDeclaration bool
-	cmd := &cobra.Command{
-		Use:   "refs <symbol>",
-		Short: "Find references to a symbol using an LSP provider",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			s, commit, err := a.codeContext()
-			if err != nil {
-				return err
-			}
-			reg := codeindex.NewDefaultRegistry()
-			res, err := reg.References(context.Background(), codeindex.ResolveRequest{
-				Repo: s.Context.Project, Root: s.Context.RepoRoot, Commit: commit,
-				Path: codePath, Symbol: args[0],
-			}, includeDeclaration)
-			if err != nil {
-				return err
-			}
-			if a.JSON {
-				return a.printJSON(map[string]any{"symbol": args[0], "provider": res.Provider, "locations": res.Locations, "count": len(res.Locations)})
-			}
-			for _, loc := range res.Locations {
-				fmt.Printf("%s:%d  %s\n", loc.Path, loc.Line, loc.Signature)
-			}
-			fmt.Printf("\n%d references from %s\n", len(res.Locations), res.Provider)
-			return nil
-		},
-	}
-	cmd.Flags().StringVar(&codePath, "path", "", "file containing the symbol")
-	cmd.Flags().BoolVar(&includeDeclaration, "include-declaration", false, "include the declaration")
 	return cmd
 }
 

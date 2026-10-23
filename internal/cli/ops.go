@@ -309,18 +309,6 @@ func (a *App) doctorCmd() *cobra.Command {
 			add("remote", rt.Store.Remote != "" && !strings.Contains(rt.Store.Remote, "your-org"), rt.Store.Remote)
 			add("github token", rt.Forge != nil && rt.Forge.Available(), "DOCSYNC_FORGE_TOKEN, forge.token, or gh auth token")
 			add("code provider go", true, codeindex.NewGoProvider().Version())
-			scip := codeindex.NewSCIPProvider()
-			if scip.Available() {
-				add("code provider scip", true, scip.Version()+" (durable index)")
-			} else {
-				add("code provider scip", false, "set DOCSYNC_SCIP_INDEX or place index.scip at the repo root")
-			}
-			lsp := codeindex.NewLSPProvider()
-			if lsp.Available {
-				add("code provider lsp", true, strings.Join(lsp.Languages(), ", "))
-			} else {
-				add("code provider lsp", false, "no TypeScript/Python/PHP/Java/Kotlin/Rust language server found")
-			}
 			ctags := codeindex.NewCtagsProvider()
 			if ctags.Available {
 				add("code provider ctags", true, ctags.Version())

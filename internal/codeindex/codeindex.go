@@ -1,6 +1,6 @@
 // Package codeindex validates and indexes code references from docsync
-// documents. It provides path validation, a grep fallback, and optional
-// language providers (Go and Universal Ctags currently; LSP/SCIP later).
+// documents. It provides path validation, a grep fallback, a native Go provider
+// and an optional Universal Ctags provider.
 package codeindex
 
 import (
@@ -94,7 +94,6 @@ type Snapshot struct {
 
 type Symbol struct {
 	Provider    string `json:"provider,omitempty"`
-	SCIP        string `json:"scip,omitempty"`
 	Repo        string `json:"repo,omitempty"`
 	Commit      string `json:"commit,omitempty"`
 	Package     string `json:"package,omitempty"`
@@ -115,21 +114,6 @@ type ResolveRequest struct {
 	Symbol string
 }
 
-type ReferenceLocation struct {
-	Path      string `json:"path"`
-	Line      int    `json:"line"`
-	Signature string `json:"signature,omitempty"`
-}
-
-type ReferenceResult struct {
-	Provider  string              `json:"provider"`
-	Locations []ReferenceLocation `json:"locations"`
-}
-
-type ReferenceProvider interface {
-	References(ctx context.Context, req ResolveRequest, includeDeclaration bool) ([]ReferenceLocation, error)
-}
-
 type Catalog struct {
 	Repo      string      `json:"repo"`
 	Commit    string      `json:"commit"`
@@ -137,9 +121,6 @@ type Catalog struct {
 	Warnings  []string    `json:"warnings,omitempty"`
 }
 
-// Provider is the future contract for language-specific indexing. Part 1 only
-// uses the git path/grep validator; Go, ctags, LSP and SCIP providers will
-// implement this interface without changing the validation result model.
 var (
 	ErrUnsupported     = errors.New("code index does not support this repository")
 	ErrCommitMismatch  = errors.New("code index checkout does not match the requested commit")

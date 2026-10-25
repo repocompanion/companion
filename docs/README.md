@@ -21,6 +21,7 @@ Start with the [README](../README.md) for installation and the quick start.
 ## Project
 
 - [Contributing](../CONTRIBUTING.md)
+- [Maintainers](../MAINTAINERS.md)
 - [Security policy](../SECURITY.md)
 - [Roadmap](../ROADMAP.md)
 - [Versioning](../VERSIONING.md)

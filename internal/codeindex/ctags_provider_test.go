@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/repocompanion/companion/internal/gitx"
@@ -11,6 +12,9 @@ import (
 )
 
 func TestCtagsProviderIndexAndResolve(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake ctags provider is a POSIX shell script; Windows needs a real executable")
+	}
 	root := testRepo(t)
 	if err := os.WriteFile(filepath.Join(root, "app.ts"), []byte("export function handler(req, res) {}\n"), 0o644); err != nil {
 		t.Fatal(err)

@@ -81,11 +81,16 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          # Scan with a patched stable toolchain. govulncheck v1.8.0 itself
+          # requires a newer Go than the module's minimum, and the toolchain
+          # auto-download would otherwise pin the vulnerable Go 1.26.0.
+          go-version: 'stable'
           cache: true
 
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+        env:
+          GOTOOLCHAIN: local
 
   release-config:
     name: goreleaser check

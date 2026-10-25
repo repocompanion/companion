@@ -250,7 +250,7 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "docs_set_context",
-		Description: "Set user or repo context. registry scope opens a companion PR against the org registry.",
+		Description: "Set user or repo context (project, team, domain, languages, machine). Security-sensitive keys such as remote and forge.* can only be changed with `companion config set`. Registry scope opens a companion PR against the org registry.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in setContextIn) (*mcp.CallToolResult, any, error) {
 		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
@@ -258,6 +258,9 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 		}
 		switch in.Scope {
 		case "user":
+			if err := validateMCPUserField(in.Field); err != nil {
+				return errorResult(err)
+			}
 			rt, err := p.runtime()
 			if err != nil {
 				return errorResult(err)
@@ -291,6 +294,26 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 			return errorResult(errors.New("scope must be user, repo or registry"))
 		}
 	})
+}
+
+// mcpUserContextFields is the complete set of user-config keys an MCP client
+// may change. Anything that selects a remote, host, credential or policy
+// belongs to the human CLI: a prompt-injected agent must not be able to
+// redirect the GitHub token or the docs-store remote.
+var mcpUserContextFields = map[string]bool{
+	"project":           true,
+	"team":              true,
+	"domain":            true,
+	"languages":         true,
+	"machine":           true,
+	"user.default_team": true,
+}
+
+func validateMCPUserField(field string) error {
+	if mcpUserContextFields[field] {
+		return nil
+	}
+	return fmt.Errorf("field %q cannot be changed through MCP; use `companion config set %s <value>` in a terminal", field, field)
 }
 
 func knowledgeArea(sess *runtime.Session, scope string) (area string, own bool, err error) {

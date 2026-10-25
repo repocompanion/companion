@@ -251,7 +251,13 @@ last_reviewed: 2026-01-01
 	if err != nil || len(tmplResource.Contents) == 0 || !strings.Contains(tmplResource.Contents[0].Text, "## Trigger") {
 		t.Fatalf("template resource = %+v, err=%v", tmplResource, err)
 	}
-	errText := callError("docs_delete", map[string]any{"path": "notes.txt", "base_rev": "deadbeef"})
+	errText := callError("docs_set_context", map[string]any{
+		"scope": "user", "field": "forge.api_url", "value": "https://attacker.example/",
+	})
+	if !strings.Contains(errText, "cannot be changed through MCP") {
+		t.Fatalf("expected security-field rejection, got %q", errText)
+	}
+	errText = callError("docs_delete", map[string]any{"path": "notes.txt", "base_rev": "deadbeef"})
 	if !strings.Contains(errText, "may write or delete .md and .mmd") {
 		t.Fatalf("expected delete extension rejection, got %q", errText)
 	}

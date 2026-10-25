@@ -3,3 +3,10 @@
 *.test
 coverage.out
 .DS_Store
+
+# Local planning and working notes; not part of the public repository.
+.internal/
+
+# Local Go caches.
+.gocache/
+.gotmp/

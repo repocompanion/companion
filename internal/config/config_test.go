@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bolacha/docsync/internal/gitx"
@@ -132,5 +133,44 @@ func TestSetRepoMappingPreservesUnchangedFields(t *testing.T) {
 	})
 	if got := reg.Repos["acme/new"]; got.Domain != "billing" {
 		t.Fatalf("new mapping = %+v", got)
+	}
+}
+
+func TestProjectSettersRejectNonCanonicalValues(t *testing.T) {
+	var user UserConfig
+	if err := SetUserKey(&user, "project", "acme/api/extra"); err == nil {
+		t.Fatal("user project accepted extra path segment")
+	}
+	if err := SetUserKey(&user, "project", "acme/api"); err != nil {
+		t.Fatalf("valid user project rejected: %v", err)
+	}
+	if user.Project != "acme/api" {
+		t.Fatalf("user project = %q", user.Project)
+	}
+
+	var repo RepoConfig
+	if err := SetRepoKey(&repo, "project", "../api"); err == nil {
+		t.Fatal("repo project accepted traversal")
+	}
+	if err := SetRepoKey(&repo, "project", "acme/api"); err != nil {
+		t.Fatalf("valid repo project rejected: %v", err)
+	}
+}
+
+func TestResolveWarnsOnInvalidProject(t *testing.T) {
+	ctx := Resolve(context.Background(), ResolveInput{
+		Cwd:  t.TempDir(),
+		User: UserConfig{Project: "acme/api/extra"},
+		Env:  map[string]string{},
+	})
+	found := false
+	for _, warning := range ctx.Warnings {
+		if strings.Contains(warning, "project must be owner/repo") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("warnings = %v", ctx.Warnings)
 	}
 }

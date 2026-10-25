@@ -13,6 +13,7 @@ import (
 	"github.com/bolacha/docsync/internal/changeset"
 	"github.com/bolacha/docsync/internal/codeindex"
 	"github.com/bolacha/docsync/internal/config"
+	"github.com/bolacha/docsync/internal/docrules"
 	"github.com/bolacha/docsync/internal/gitx"
 	"github.com/bolacha/docsync/internal/lint"
 	"github.com/bolacha/docsync/internal/mcpserver"
@@ -219,6 +220,9 @@ func (a *App) registryAddRepoCmd() *cobra.Command {
 			}
 			if team == "" {
 				return fmt.Errorf("--team is required")
+			}
+			if err := docrules.ValidateProject(args[0]); err != nil {
+				return err
 			}
 			s, err := a.session()
 			if err != nil {

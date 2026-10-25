@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bolacha/docsync/internal/docrules"
 	"github.com/bolacha/docsync/internal/gitx"
 	"gopkg.in/yaml.v3"
 )
@@ -384,6 +385,8 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	}
 	if c.Project == "" {
 		c.Unresolved = append(c.Unresolved, "project")
+	} else if err := docrules.ValidateProject(c.Project); err != nil {
+		c.Warnings = append(c.Warnings, err.Error()+"; project-scoped writes will fail until it is fixed")
 	}
 
 	// Registry repo mapping.
@@ -819,7 +822,11 @@ func SetUserKey(c *UserConfig, key, value string) error {
 		}
 		c.MCP.MaxFileSize = n
 	case "project":
-		c.Project = value
+		project, err := validateProjectField(value)
+		if err != nil {
+			return err
+		}
+		c.Project = project
 	case "team":
 		c.Team = value
 	case "domain":
@@ -837,7 +844,11 @@ func SetUserKey(c *UserConfig, key, value string) error {
 func SetRepoKey(c *RepoConfig, key, value string) error {
 	switch key {
 	case "project":
-		c.Project = value
+		project, err := validateProjectField(value)
+		if err != nil {
+			return err
+		}
+		c.Project = project
 	case "team":
 		c.Team = value
 	case "domain":
@@ -850,6 +861,17 @@ func SetRepoKey(c *RepoConfig, key, value string) error {
 		return fmt.Errorf("unknown repo config key %q", key)
 	}
 	return nil
+}
+
+func validateProjectField(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if err := docrules.ValidateProject(value); err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 func parseByteSize(s string) (int64, error) {

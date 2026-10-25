@@ -12,6 +12,7 @@ import (
 
 	"github.com/bolacha/docsync/internal/changeset"
 	"github.com/bolacha/docsync/internal/config"
+	"github.com/bolacha/docsync/internal/docrules"
 	"github.com/bolacha/docsync/internal/gitx"
 	"github.com/bolacha/docsync/internal/runtime"
 	"github.com/bolacha/docsync/internal/state"
@@ -171,12 +172,15 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 		if err != nil {
 			return errorResult(err)
 		}
-		project := sess.Context.Project
+		project := strings.TrimSpace(sess.Context.Project)
 		if in.Project != "" {
-			project = in.Project
+			project = strings.TrimSpace(in.Project)
 		}
 		if project == "" {
 			return errorResult(errors.New("project is unresolved"))
+		}
+		if err := docrules.ValidateProject(project); err != nil {
+			return errorResult(err)
 		}
 		area := "projects/" + strings.Trim(project, "/")
 		o, err := sess.Manager.Overlay(ctx, area)
@@ -443,11 +447,15 @@ func formatRefs(refs []refIn) string {
 }
 
 func setRegistry(ctx context.Context, sess *runtime.Session, project, field, value string) (*mcp.CallToolResult, any, error) {
+	project = strings.TrimSpace(project)
 	if project == "" {
 		project = sess.Context.Project
 	}
 	if project == "" {
 		return errorResult(errors.New("project is unresolved"))
+	}
+	if err := docrules.ValidateProject(project); err != nil {
+		return errorResult(err)
 	}
 	if field != "team" && field != "domain" {
 		return errorResult(errors.New("registry scope supports field team or domain"))

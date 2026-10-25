@@ -105,3 +105,36 @@ func TestValidateReferences(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateAreaRequiresCanonicalDepth(t *testing.T) {
+	valid := []string{"org", "teams/payments", "teams/data platform", "projects/acme/api", ".docsync", "/org/", "projects/acme/api/"}
+	for _, area := range valid {
+		if err := ValidateArea(area); err != nil {
+			t.Errorf("ValidateArea(%q) = %v, want nil", area, err)
+		}
+	}
+	invalid := []string{
+		"", "teams", "teams/", "teams/payments/extra", "teams/..", "projects/acme",
+		"projects/acme/api/extra", "org/payments", "org//payments",
+		"projects/../api", "projects/acme/..", "projects/acme/api//x",
+		"projects/acme/api?x", ".docsync/registry", "random",
+	}
+	for _, area := range invalid {
+		if err := ValidateArea(area); err == nil {
+			t.Errorf("ValidateArea(%q) = nil, want an error", area)
+		}
+	}
+}
+
+func TestValidateProject(t *testing.T) {
+	for _, project := range []string{"acme/api", "acme/api-v2", "owner_1/repo.go", "local/foo"} {
+		if err := ValidateProject(project); err != nil {
+			t.Errorf("ValidateProject(%q) = %v, want nil", project, err)
+		}
+	}
+	for _, project := range []string{"", "acme", "acme/api/extra", "../api", "acme/..", "acme/api?x"} {
+		if err := ValidateProject(project); err == nil {
+			t.Errorf("ValidateProject(%q) = nil, want an error", project)
+		}
+	}
+}

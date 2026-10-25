@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/bolacha/docsync/internal/store"
 )
@@ -49,6 +50,7 @@ var ValidStatuses = map[string]bool{
 
 var adrFile = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*\.md$`)
 var fingerprintRE = regexp.MustCompile(`^sha256:[a-fA-F0-9]{64}$`)
+var projectSegmentRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 var ValidReferenceKinds = map[string]bool{
 	"function": true, "method": true, "type": true, "package": true,
@@ -129,21 +131,50 @@ func IsAgentDocumentPath(p string) bool {
 	}
 }
 
-// ValidateArea accepts org/**, teams/<team>/** and projects/<owner>/<repo>/**.
+// ValidateProject accepts an owner/repo pair.
+func ValidateProject(project string) error {
+	project = strings.Trim(project, "/")
+	parts := strings.Split(project, "/")
+	if len(parts) != 2 || !validProjectSegment(parts[0]) || !validProjectSegment(parts[1]) {
+		return fmt.Errorf("project must be owner/repo using letters, digits, dots, underscores or hyphens: %q", project)
+	}
+	return nil
+}
+
+func validProjectSegment(s string) bool {
+	return s != "." && s != ".." && projectSegmentRE.MatchString(s)
+}
+
+// validTeamSegment accepts any non-empty path component without separators or
+// control characters. Team keys are org-defined and may contain spaces, so only
+// values that would break area paths are rejected.
+func validTeamSegment(s string) bool {
+	if s == "" || s == "." || s == ".." || strings.TrimSpace(s) == "" {
+		return false
+	}
+	if strings.ContainsAny(s, "/\\") {
+		return false
+	}
+	return !strings.ContainsFunc(s, unicode.IsControl)
+}
+
+// ValidateArea accepts exactly org, teams/<team>, projects/<owner>/<repo> or
+// .docsync. Allowing deeper or nested areas makes AreaForPath, active-overlay
+// merging and per-area locks disagree about which changeset owns a document.
 func ValidateArea(area string) error {
-	area = strings.Trim(area, "/")
-	parts := strings.Split(area, "/")
+	trimmed := strings.Trim(area, "/")
+	parts := strings.Split(trimmed, "/")
 	switch {
-	case area == ".docsync" || strings.HasPrefix(area, ".docsync/"):
+	case trimmed == ".docsync":
 		return nil
-	case area == "org" || (len(parts) > 1 && parts[0] == "org"):
+	case trimmed == "org":
 		return nil
-	case len(parts) >= 2 && parts[0] == "teams" && parts[1] != "":
+	case len(parts) == 2 && parts[0] == "teams" && validTeamSegment(parts[1]):
 		return nil
-	case len(parts) >= 3 && parts[0] == "projects" && parts[1] != "" && parts[2] != "":
+	case len(parts) == 3 && parts[0] == "projects" && ValidateProject(parts[1]+"/"+parts[2]) == nil:
 		return nil
 	default:
-		return fmt.Errorf("area must be org/..., teams/<team>/... or projects/<owner>/<repo>/...: %q", area)
+		return fmt.Errorf("area must be exactly org, teams/<team>, projects/<owner>/<repo> or .docsync: %q", area)
 	}
 }
 

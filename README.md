@@ -1,8 +1,9 @@
-# docsync
+# Repo Companion
 
-`docsync` is a Git-backed document store for humans and coding agents. Project
-docs and organization guidance live in one central repository; every change is
-made in a local changeset worktree and published through a GitHub pull request.
+**Repo Companion** is a Git-backed document store for humans and coding agents,
+shipped as the `companion` CLI. Project docs and organization guidance live in
+one central repository; every change is made in a local changeset worktree and
+published through a GitHub pull request.
 
 The primary problem it solves is **agent context and discoverability**: an agent
 can ask for the guidance relevant to a coding task before it starts, and can
@@ -15,29 +16,29 @@ This is an early, working implementation of `PLAN.md`.
 
 - **Central docs store** (`your-org/docs-store`) with `org/`, `teams/` and
   `projects/<owner>/<repo>/` areas.
-- **Read-only main mirror** at `~/.docsync/main`; all reads are local and fast.
+- **Read-only main mirror** at `~/.companion/main`; all reads are local and fast.
 - **Active changeset overlay** for reads: pending additions/modifications are visible, deleted docs are tombstoned, and results carry `source`/`state`.
 - **Bounded context** for agents: `docs_get_context` returns a 200-doc index by default, with `max_docs`/`full` controls and visible warnings when open PRs could not be checked.
 - **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
 - **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
-- **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `docsync import`.
+- **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `companion import`.
 - **Code context**: validate `reference_impls` paths/symbols, resolve symbols with the native Go provider and optional ctags, attach resolved paths/lines/signatures to guidance, detect advisory drift, and expose `code map`, `code find` and `stale` commands plus MCP tools.
-- **Changeset worktrees** at `~/.docsync/changes/<area>--<topic>/`.
+- **Changeset worktrees** at `~/.companion/changes/<area>--<topic>/`.
 - **Explicit sync**: `change sync` commits, integrates the remote branch and
   pushes; `change submit` lints the changed docs, rebases on `main`, marks the
   PR ready and freezes the changeset. There is no daemon, polling or auto-push.
 - **Shared PRs**: collaborators join an open PR with `change join`; `submit`
   freezes it until `change reopen`.
 - **GitHub integration** through SSH for Git and a token from
-  `DOCSYNC_FORGE_TOKEN`, `forge.token`, or `gh auth token` for PRs.
+  `COMPANION_FORGE_TOKEN`, `forge.token`, or `gh auth token` for PRs.
 - **MCP server** on stdio with context, guidance, read/history, changeset and
   review-comment tools, plus roots, document/template resources and cursor
   pagination.
 - **Layered context resolution** with provenance: flags, environment, repo
-  `.docsync.yaml`, user config, org registry, Git/manifests/hostname.
+  `.companion.yaml`, user config, org registry, Git/manifests/hostname.
 - **BM25 search** with field weighting, snippets, matched terms and score
   explanations. Guidance uses the same ranking and returns snippets; use
-  `docs_read`/`docsync cat` for full content.
+  `docs_read`/`companion cat` for full content.
 - **Guidance ranking** for patterns, ADRs and standards with project → team →
   org precedence and explicit `overrides`.
 - **Shared validation** in `internal/docrules` for MCP writes, lint, templates
@@ -50,8 +51,8 @@ This is an early, working implementation of `PLAN.md`.
 Requirements: Go 1.25+, Git 2.30+.
 
 ```bash
-go build -o docsync ./cmd/docsync
-./docsync --help
+go build -o companion ./cmd/companion
+./companion --help
 ```
 
 Or:
@@ -91,40 +92,40 @@ are not part of the current CLI surface.
 
 ```bash
 # 1. Create the central store in GitHub, then initialize locally.
-docsync init --remote git@github.com:your-org/docs-store.git
+companion init --remote git@github.com:your-org/docs-store.git
 
 # 2. Authenticate for PRs.
 gh auth login
 
 # 3. Read context and guidance.
-docsync context
-docsync guidance "implement an SQS consumer in Go"
+companion context
+companion guidance "implement an SQS consumer in Go"
 
 # 4. Start a changeset and author a doc.
-docsync change start "refund flow"
-docsync new flows/refund.md --template flow
-docsync edit flows/refund.md
+companion change start "refund flow"
+companion new flows/refund.md --template flow
+companion edit flows/refund.md
 
 # 5. Push and open/update the draft PR.
-docsync change sync
+companion change sync
 
 # 6. When ready for review.
-docsync change submit -m "document the refund flow"
+companion change submit -m "document the refund flow"
 ```
 
 For a ready PR that receives review comments:
 
 ```bash
-docsync change reopen
+companion change reopen
 # edit files
-docsync change sync
-docsync change submit
+companion change sync
+companion change submit
 ```
 
 Agent setup (Claude Code):
 
 ```bash
-claude mcp add --scope user docsync -- docsync mcp
+claude mcp add --scope user companion -- companion mcp
 ```
 
 Cursor (`~/.cursor/mcp.json`):
@@ -132,74 +133,74 @@ Cursor (`~/.cursor/mcp.json`):
 ```json
 {
   "mcpServers": {
-    "docsync": {
-      "command": "docsync",
+    "companion": {
+      "command": "companion",
       "args": ["mcp"]
     }
   }
 }
 ```
 
-`docsync init` prints a snippet for each code repository's `CLAUDE.md`,
+`companion init` prints a snippet for each code repository's `CLAUDE.md`,
 `AGENTS.md` or `.cursor/rules`.
 
 ## Commands
 
 | Command | Purpose |
 |---|---|
-| `docsync init --remote <url>` | Clone the bare store and create the main mirror |
-| `docsync pull` | Fetch main and fast-forward the mirror |
-| `docsync status` | Mirror, changesets, dirty files and PR states |
-| `docsync context` | Resolved identity/project/team/languages with sources |
-| `docsync project` | Resolved project, team and area |
-| `docsync ls [DIR] [--pending]` | List docs with pending states, optionally with open PRs |
-| `docsync cat <doc> [--rev R] [--pr N]` | Print a document; reports changeset deletions |
-| `docsync search <query> [--all]` | Search with the active changeset overlay |
-| `docsync guidance "<task>" [--lang go]` | Ranked patterns, ADRs, standards with validated code context |
-| `docsync export agents-md` | Managed AGENTS.md block for coding agents |
-| `docsync export llms-txt` | Compact llms.txt discovery file |
-| `docsync export context` | Bounded JSON/Markdown context bundle |
-| `docsync import --from <dir>` | Dry-run or apply a legacy Markdown migration |
-| `docsync change start "<topic>"` | Start a changeset |
-| `docsync change join <PR#>` | Join a shared changeset |
-| `docsync change sync [id]` | Commit, integrate, push, create/update draft PR |
-| `docsync change submit [id] [--skip-lint] [--skip-code-refs]` | Lint, validate code refs, rebase, mark ready, freeze |
-| `docsync change reopen [id]` | Return a ready PR to draft |
-| `docsync change rebase [id]` | Resolve conflicts with the remote branch/main |
-| `docsync change cleanup [id]` | Remove a merged/closed changeset |
-| `docsync change abandon [id]` | Close the PR and remove the worktree |
-| `docsync change adopt` | Move accidental mirror edits into a changeset |
-| `docsync new <doc> --template ...` | Create a doc from a template |
-| `docsync adr new "<title>"` | Create a date-stamped ADR |
-| `docsync edit <doc>` | Open a document in the active worktree |
-| `docsync move <doc> <new-path>` | Rename with Git history preserved |
-| `docsync log <doc> [--wip]` | Versions, authors, PRs and agent source |
-| `docsync diff <doc> [A] [B] [--pr N]` | Diff versions or a PR |
-| `docsync blame <doc>` | Line authorship |
-| `docsync restore <doc> <version>` | Open a changeset that restores a version |
-| `docsync lint [--store DIR]` | Local subset of store CI |
-| `docsync validate-code-refs [--all]` | Validate reference_impls paths, symbols and drift |
-| `docsync stale [--all]` | Show documents with stale code references |
-| `docsync code map [--path DIR] [--kind KIND]` | Index available code symbols in the current repo |
-| `docsync code find <symbol>` | Resolve a code symbol |
-| `docsync config get\|set\|init-repo` | Manage user and repo config |
-| `docsync registry add-repo <repo> --team <t>` | Update the org registry via PR |
-| `docsync doctor [--online]` | Check git, store, auth, mirror and code providers |
-| `docsync mcp` | Run the MCP server on stdio |
+| `companion init --remote <url>` | Clone the bare store and create the main mirror |
+| `companion pull` | Fetch main and fast-forward the mirror |
+| `companion status` | Mirror, changesets, dirty files and PR states |
+| `companion context` | Resolved identity/project/team/languages with sources |
+| `companion project` | Resolved project, team and area |
+| `companion ls [DIR] [--pending]` | List docs with pending states, optionally with open PRs |
+| `companion cat <doc> [--rev R] [--pr N]` | Print a document; reports changeset deletions |
+| `companion search <query> [--all]` | Search with the active changeset overlay |
+| `companion guidance "<task>" [--lang go]` | Ranked patterns, ADRs, standards with validated code context |
+| `companion export agents-md` | Managed AGENTS.md block for coding agents |
+| `companion export llms-txt` | Compact llms.txt discovery file |
+| `companion export context` | Bounded JSON/Markdown context bundle |
+| `companion import --from <dir>` | Dry-run or apply a legacy Markdown migration |
+| `companion change start "<topic>"` | Start a changeset |
+| `companion change join <PR#>` | Join a shared changeset |
+| `companion change sync [id]` | Commit, integrate, push, create/update draft PR |
+| `companion change submit [id] [--skip-lint] [--skip-code-refs]` | Lint, validate code refs, rebase, mark ready, freeze |
+| `companion change reopen [id]` | Return a ready PR to draft |
+| `companion change rebase [id]` | Resolve conflicts with the remote branch/main |
+| `companion change cleanup [id]` | Remove a merged/closed changeset |
+| `companion change abandon [id]` | Close the PR and remove the worktree |
+| `companion change adopt` | Move accidental mirror edits into a changeset |
+| `companion new <doc> --template ...` | Create a doc from a template |
+| `companion adr new "<title>"` | Create a date-stamped ADR |
+| `companion edit <doc>` | Open a document in the active worktree |
+| `companion move <doc> <new-path>` | Rename with Git history preserved |
+| `companion log <doc> [--wip]` | Versions, authors, PRs and agent source |
+| `companion diff <doc> [A] [B] [--pr N]` | Diff versions or a PR |
+| `companion blame <doc>` | Line authorship |
+| `companion restore <doc> <version>` | Open a changeset that restores a version |
+| `companion lint [--store DIR]` | Local subset of store CI |
+| `companion validate-code-refs [--all]` | Validate reference_impls paths, symbols and drift |
+| `companion stale [--all]` | Show documents with stale code references |
+| `companion code map [--path DIR] [--kind KIND]` | Index available code symbols in the current repo |
+| `companion code find <symbol>` | Resolve a code symbol |
+| `companion config get\|set\|init-repo` | Manage user and repo config |
+| `companion registry add-repo <repo> --team <t>` | Update the org registry via PR |
+| `companion doctor [--online]` | Check git, store, auth, mirror and code providers |
+| `companion mcp` | Run the MCP server on stdio |
 
 ## Exports for non-MCP agents
 
 ```bash
-docsync export agents-md --output AGENTS.md
-docsync export llms-txt --output llms.txt
-docsync export context --format markdown --output context.md
+companion export agents-md --output AGENTS.md
+companion export llms-txt --output llms.txt
+companion export context --format markdown --output context.md
 ```
 
 Exports use the active changeset overlay, so pending docs are visible with their
 source/state. They include a snapshot warning, required-doc status, documentation
 groups and top BM25 guidance for common tasks.
 
-`agents-md` writes a managed `<!-- docsync:begin -->` / `<!-- docsync:end -->`
+`agents-md` writes a managed `<!-- companion:begin -->` / `<!-- companion:end -->`
 block and preserves human content outside it. It refuses to overwrite a file
 without that block unless `--force` is passed. Without `--output`, all export
 commands write to stdout.
@@ -208,10 +209,10 @@ commands write to stdout.
 
 ```bash
 # Inspect the proposed mapping without writing anything.
-docsync import --from ./docs --project acme/api --report migration.json
+companion import --from ./docs --project acme/api --report migration.json
 
 # Resolve ambiguous files with a path mapping.
-docsync import --from ./docs --project acme/api --map mapping.json --apply
+companion import --from ./docs --project acme/api --map mapping.json --apply
 ```
 
 The importer detects README/architecture docs, ADRs, flows, runbooks, patterns
@@ -228,8 +229,8 @@ and aggregate-section mappings are deferred; see `CAVEATS.md`.
 - `docs_list`, `docs_search` and `docs_get_context` accept `limit`/`max_docs`
   and an opaque `cursor`; responses include `next_cursor` when another page
   exists.
-- `docsync://docs/{+path}` resources return an overlay-aware document.
-- `docsync://templates/{kind}` resources return canonical skeletons.
+- `companion://docs/{+path}` resources return an overlay-aware document.
+- `companion://templates/{kind}` resources return canonical skeletons.
 - Tool annotations distinguish read-only, destructive and idempotent tools.
 - MCP roots are used for project discovery when the client provides them. The
   current implementation negotiates protocol `2025-11-25` so the roots API
@@ -275,7 +276,7 @@ Agents can never merge. `docs_change_submit` lints changed documents and
 validates their code references, keeping the PR as a draft on errors. Missing
 reference paths and missing symbols block submit; stale, external or unverified
 references are warnings. Only a human can bypass these checks with
-`docsync change submit --skip-lint` or `--skip-code-refs`. A human merges the PR
+`companion change submit --skip-lint` or `--skip-code-refs`. A human merges the PR
 under GitHub branch protection.
 
 ## Code context
@@ -306,29 +307,29 @@ as `external` and are not symbol-checked. Drift is advisory.
 
 ```bash
 # Validate all reference_impls in the current project.
-docsync validate-code-refs
+companion validate-code-refs
 
 # Validate one document.
-docsync validate-code-refs --path projects/acme/api/patterns/sqs.md
+companion validate-code-refs --path projects/acme/api/patterns/sqs.md
 
 # Validate the whole store as JSON.
-docsync validate-code-refs --all --json
+companion validate-code-refs --all --json
 
 # Show only stale references.
-docsync stale
-docsync stale --all --json
+companion stale
+companion stale --all --json
 
 # Inspect the current repo's symbol map.
-docsync code map --path internal/consumer
+companion code map --path internal/consumer
 
 # Filter by kind: function, method, type, route, job, migration, config, test.
-docsync code map --kind config
+companion code map --kind config
 
 # Resolve a specific symbol.
-docsync code find Consumer.Run --path internal/consumer
+companion code find Consumer.Run --path internal/consumer
 
 # Show available providers.
-docsync doctor
+companion doctor
 ```
 
 `code map` uses the native Go provider and optional ctags. Non-Go symbols use
@@ -337,7 +338,7 @@ ctags when installed, otherwise `git grep` as `unverified`.
 Code indexes are cached under:
 
 ```text
-~/.docsync/cache/code/<repo>/<commit>/
+~/.companion/cache/code/<repo>/<commit>/
 ```
 
 ### MCP
@@ -370,7 +371,7 @@ drift_status   fresh | stale | unknown
 provider       go | ctags | git-grep
 ```
 
-`docs_get_guidance` and `docsync guidance` attach `code_context` entries with the
+`docs_get_guidance` and `companion guidance` attach `code_context` entries with the
 resolved path, line, qualified name, signature, provider and validation status.
 If no code repository is available, they return a warning instead of failing.
 
@@ -391,10 +392,10 @@ submit warnings, and in `docs_stale`, but does not block submit.
 Highest priority first:
 
 1. flags / MCP arguments
-2. environment (`DOCSYNC_PROJECT`, `DOCSYNC_TEAM`, `DOCSYNC_HOME`, ...)
-3. repo `.docsync.yaml`
-4. user config (`~/.config/docsync/config.yaml`; `%APPDATA%\docsync\config.yaml`)
-5. store registry (`.docsync/registry.yaml`)
+2. environment (`COMPANION_PROJECT`, `COMPANION_TEAM`, `COMPANION_HOME`, ...)
+3. repo `.companion.yaml`
+4. user config (`~/.config/companion/config.yaml`; `%APPDATA%\companion\config.yaml`)
+5. store registry (`.companion/registry.yaml`)
 6. auto-detection from Git remotes, manifests and hostname
 7. built-in defaults
 
@@ -468,12 +469,12 @@ manually against a sandbox repository.
   it does not yet use the newer multi-round-trip roots input request.
 - Image/binary additions are a human CLI/editor action, not an MCP write.
 - Import copies files; it does not yet preserve Git history with `git mv`.
-- `docsync import` is CLI-only; no MCP import tool scans arbitrary local paths.
+- `companion import` is CLI-only; no MCP import tool scans arbitrary local paths.
 - Code-reference validation is strongest for Go. Non-Go syntax symbols use
   `universal-ctags`; without it they use `git grep` and are marked `unverified`.
 - The native Go provider is the only semantic provider.
 - LSP, SCIP and LSIF are parked in `idea.md`; they are not part of the current CLI.
-- Code-reference validation is not yet part of `docsync lint`; it runs during
+- Code-reference validation is not yet part of `companion lint`; it runs during
   `change submit` and through `validate-code-refs`.
 - Go indexing covers packages, functions, methods, types, basic routes,
   job-like functions, config fields, migrations and test functions. The

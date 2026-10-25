@@ -1,14 +1,14 @@
 # Setting up the central docs store
 
-`docsync` expects one repository, for example `your-org/docs-store`, with
+`companion` expects one repository, for example `your-org/docs-store`, with
 `main` protected. Project docs are not stored in service repositories.
 
 ## 1. Create the repository
 
 Create an empty **private** GitHub repository. Give every engineer read access
-and use CODEOWNERS plus branch protection for write control. The docsync Git
+and use CODEOWNERS plus branch protection for write control. The companion Git
 transport is SSH; API calls use a token from `gh auth token` or
-`DOCSYNC_FORGE_TOKEN`.
+`COMPANION_FORGE_TOKEN`.
 
 Recommended layout:
 
@@ -17,7 +17,7 @@ docs-store/
 ├── .github/
 │   ├── CODEOWNERS
 │   └── workflows/docs-ci.yml
-├── .docsync/
+├── .companion/
 │   ├── registry.yaml
 │   └── templates/            # optional team templates
 ├── org/
@@ -47,7 +47,7 @@ On `main`:
 - allow **squash merge only**;
 - optionally enable auto-merge for `projects/**` after approval and green CI.
 
-The docsync CLI never merges. `docsync change submit` only marks a PR ready and
+The companion CLI never merges. `companion change submit` only marks a PR ready and
 freezes the changeset; a human or GitHub auto-merge performs the merge.
 
 ## 3. CODEOWNERS
@@ -61,24 +61,24 @@ Route review by area. Adjust the team names to your organization:
 /projects/your-org/payments-api/ @your-org/payments
 
 /.github/                        @your-org/architecture
-/.docsync/                       @your-org/architecture
+/.companion/                       @your-org/architecture
 ```
 
-`docsync context` reads this file for the reviewer display. GitHub itself
+`companion context` reads this file for the reviewer display. GitHub itself
 enforces approvals.
 
 MCP writes enforce the canonical layout and frontmatter. If an agent tries to
-create `decisions.md`, `operations.md` or a doc without frontmatter, docsync
+create `decisions.md`, `operations.md` or a doc without frontmatter, companion
 returns an actionable error and `docs_get_context.structure` shows the expected
 paths and required fields.
 
 ## 4. Registry
 
-`.docsync/registry.yaml` maps repositories, teams and aliases. It is changed
+`.companion/registry.yaml` maps repositories, teams and aliases. It is changed
 through a docs PR, for example:
 
 ```bash
-docsync registry add-repo your-org/payments-api --team payments
+companion registry add-repo your-org/payments-api --team payments
 ```
 
 Example:
@@ -103,7 +103,7 @@ defaults:
 
 ## 5. CI
 
-Use `docsync lint --store .` in the store checkout. It checks frontmatter,
+Use `companion lint --store .` in the store checkout. It checks frontmatter,
 duplicate IDs within a scope, broken internal links, `overrides` targets and
 likely secrets. Add markdownlint and gitleaks for broader coverage.
 
@@ -121,8 +121,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.x'
-      - run: go install github.com/bolacha/docsync/cmd/docsync@latest
-      - run: docsync lint --store .
+      - run: go install github.com/repocompanion/companion/cmd/companion@latest
+      - run: companion lint --store .
       - uses: DavidAnson/markdownlint-cli2-action@v19
       - uses: gitleaks/gitleaks-action@v2
         env:
@@ -149,9 +149,9 @@ SHA.
 Then add project docs through changesets:
 
 ```bash
-docsync init --remote git@github.com:your-org/docs-store.git
-docsync --project your-org/payments-api change start "initial project docs"
-docsync --project your-org/payments-api new README.md --template readme
-docsync --project your-org/payments-api new architecture.md --template architecture
-docsync --project your-org/payments-api change submit -m "initial project docs"
+companion init --remote git@github.com:your-org/docs-store.git
+companion --project your-org/payments-api change start "initial project docs"
+companion --project your-org/payments-api new README.md --template readme
+companion --project your-org/payments-api new architecture.md --template architecture
+companion --project your-org/payments-api change submit -m "initial project docs"
 ```

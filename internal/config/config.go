@@ -4,9 +4,13 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -197,6 +201,71 @@ func normalizeUserConfig(c *UserConfig) {
 	}
 }
 
+// Validate rejects values that would change behavior silently. Unknown YAML
+// keys are rejected by the decoders; this checks the enums and URLs that a
+// hand-edited file can otherwise smuggle past normalizeUserConfig.
+func (c UserConfig) Validate() error {
+	switch c.Forge.Type {
+	case "", "github":
+	default:
+		return fmt.Errorf("forge.type must be github, got %q", c.Forge.Type)
+	}
+	if strings.TrimSpace(c.Forge.APIURL) != "" {
+		if err := validateAPIURL(c.Forge.APIURL); err != nil {
+			return fmt.Errorf("forge.api_url: %w", err)
+		}
+	}
+	switch c.MCP.OrgWrite {
+	case "", "propose-only", "disabled":
+	default:
+		return fmt.Errorf("mcp.org_write must be propose-only or disabled, got %q", c.MCP.OrgWrite)
+	}
+	if c.MCP.MaxFileSize < 0 {
+		return fmt.Errorf("mcp.max_file_size must be positive")
+	}
+	return nil
+}
+
+func validateAPIURL(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" || u.Hostname() == "" {
+		return fmt.Errorf("must be an absolute URL")
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	if u.Scheme == "http" && isLoopbackHost(u.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("must use https (http is allowed only for localhost)")
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func (c RepoConfig) Validate() error {
+	if strings.TrimSpace(c.Project) != "" {
+		if err := docrules.ValidateProject(c.Project); err != nil {
+			return fmt.Errorf("project: %w", err)
+		}
+	}
+	return nil
+}
+
+func decodeStrictYAML(b []byte, out any) error {
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	dec.KnownFields(true)
+	if err := dec.Decode(out); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
 // LoadUser loads (or creates defaults for) the user config.
 func LoadUser() (UserConfig, error) {
 	var c UserConfig
@@ -211,7 +280,7 @@ func LoadUser() (UserConfig, error) {
 	case err != nil:
 		return c, err
 	default:
-		if err := yaml.Unmarshal(b, &c); err != nil {
+		if err := decodeStrictYAML(b, &c); err != nil {
 			return c, fmt.Errorf("parse %s: %w", p, err)
 		}
 	}
@@ -219,12 +288,18 @@ func LoadUser() (UserConfig, error) {
 	if v := strings.TrimSpace(os.Getenv("COMPANION_REMOTE")); v != "" {
 		c.Remote = v
 	}
+	if err := c.Validate(); err != nil {
+		return c, fmt.Errorf("invalid config %s: %w", p, err)
+	}
 	return c, nil
 }
 
 // SaveUser writes the user config atomically with restrictive permissions.
 func SaveUser(c UserConfig) error {
 	normalizeUserConfig(&c)
+	if err := c.Validate(); err != nil {
+		return err
+	}
 	p, err := UserConfigPath()
 	if err != nil {
 		return err
@@ -252,8 +327,11 @@ func LoadRepo(root string) (RepoConfig, error) {
 	if err != nil {
 		return c, err
 	}
-	if err := yaml.Unmarshal(b, &c); err != nil {
+	if err := decodeStrictYAML(b, &c); err != nil {
 		return c, fmt.Errorf("parse .companion.yaml: %w", err)
+	}
+	if err := c.Validate(); err != nil {
+		return c, fmt.Errorf("invalid .companion.yaml: %w", err)
 	}
 	return c, nil
 }
@@ -261,6 +339,9 @@ func LoadRepo(root string) (RepoConfig, error) {
 func SaveRepo(root string, c RepoConfig) error {
 	if root == "" {
 		return errors.New("not inside a git repository")
+	}
+	if err := c.Validate(); err != nil {
+		return err
 	}
 	b, err := yaml.Marshal(&c)
 	if err != nil {
@@ -790,10 +871,18 @@ func SetUserKey(c *UserConfig, key, value string) error {
 	case "remote":
 		c.Remote = value
 	case "forge.type":
+		if value != "github" {
+			return fmt.Errorf("forge.type must be github")
+		}
 		c.Forge.Type = value
 	case "forge.token":
 		c.Forge.Token = value
 	case "forge.api_url":
+		if strings.TrimSpace(value) != "" {
+			if err := validateAPIURL(value); err != nil {
+				return fmt.Errorf("forge.api_url: %w", err)
+			}
+		}
 		c.Forge.APIURL = value
 	case "user.name":
 		c.User.Name = value

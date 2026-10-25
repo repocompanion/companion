@@ -212,3 +212,68 @@ func TestLoadRepoRejectsSymlinkEscape(t *testing.T) {
 		t.Fatalf("expected symlink escape rejection, got %v", err)
 	}
 }
+
+func TestLoadUserRejectsInvalidValues(t *testing.T) {
+	cases := map[string]string{
+		"unknown key":  "mcp:\n  org_writes: disabled\n",
+		"bad policy":   "mcp:\n  org_write: widen\n",
+		"bad forge":    "forge:\n  type: gitlab\n",
+		"http api url": "forge:\n  api_url: http://example.com/\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "config.yaml")
+			if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("COMPANION_CONFIG", cfgPath)
+			if _, err := LoadUser(); err == nil {
+				t.Fatalf("LoadUser accepted %q", body)
+			}
+		})
+	}
+}
+
+func TestLoadUserAllowsLoopbackAPIURL(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("forge:\n  api_url: http://127.0.0.1:8080/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("COMPANION_CONFIG", cfgPath)
+	if _, err := LoadUser(); err != nil {
+		t.Fatalf("loopback API URL rejected: %v", err)
+	}
+}
+
+func TestLoadRepoRejectsUnknownKeysAndInvalidProject(t *testing.T) {
+	cases := map[string]string{
+		"unknown key":     "project: acme/api\nunknown: value\n",
+		"invalid project": "project: acme/api/extra\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, ".companion.yaml"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadRepo(root); err == nil {
+				t.Fatalf("LoadRepo accepted %q", body)
+			}
+		})
+	}
+}
+
+func TestSetUserKeyRejectsSecurityRegressions(t *testing.T) {
+	var c UserConfig
+	if err := SetUserKey(&c, "forge.type", "gitlab"); err == nil {
+		t.Fatal("forge.type gitlab accepted")
+	}
+	if err := SetUserKey(&c, "forge.api_url", "http://example.com/"); err == nil {
+		t.Fatal("cleartext non-loopback api_url accepted")
+	}
+	if err := SetUserKey(&c, "forge.api_url", "https://github.example.com/api/v3"); err != nil {
+		t.Fatalf("valid enterprise api_url rejected: %v", err)
+	}
+}

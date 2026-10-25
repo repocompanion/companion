@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/repocompanion/companion/internal/changeset"
@@ -82,8 +83,14 @@ func (r *Runtime) SessionAt(ctx context.Context, cwd, project, team, domain stri
 		cwd = r.Cwd
 	}
 	detected := gitx.Detect(ctx, cwd)
-	repo, _ := config.LoadRepo(detected.Root)
-	registry, _ := config.LoadRegistry(r.Store.Mirror)
+	repo, err := config.LoadRepo(detected.Root)
+	if err != nil {
+		return nil, fmt.Errorf("load repository config: %w", err)
+	}
+	registry, err := config.LoadRegistry(r.Store.Mirror)
+	if err != nil {
+		return nil, fmt.Errorf("load store registry: %w", err)
+	}
 	resolved := config.Resolve(ctx, config.ResolveInput{
 		Cwd:      cwd,
 		Flags:    config.Flags{Project: project, Team: team, Domain: domain, Languages: languages},

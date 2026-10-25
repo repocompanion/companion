@@ -2154,6 +2154,14 @@ func (m *Manager) rollbackFile(ctx context.Context, c state.Change, rel, full st
 	_, _ = m.wt(ctx, c, "reset", "-q", "--", rel)
 }
 
+// rollbackMove restores a rename after a failed commit and unstages both paths.
+// os.Rename is used instead of git mv so a partially staged index cannot block
+// the restore; the following reset rebuilds the index entries from HEAD.
+func (m *Manager) rollbackMove(ctx context.Context, c state.Change, oldClean, newClean, oldFull, newFull string) {
+	_ = os.Rename(newFull, oldFull)
+	_, _ = m.wt(ctx, c, "reset", "-q", "--", oldClean, newClean)
+}
+
 type BaseRevError struct {
 	Path    string
 	Content string
@@ -2245,6 +2253,7 @@ func (m *Manager) MoveFile(ctx context.Context, area, oldRel, newRel, baseRev, s
 		return c, err
 	}
 	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
+		m.rollbackMove(ctx, c, oldClean, newClean, oldFull, newFull)
 		return c, err
 	}
 	return c, nil
@@ -2539,25 +2548,30 @@ func (m *Manager) DeleteFile(ctx context.Context, area, rel, baseRev, source str
 	if err != nil {
 		return state.Change{}, err
 	}
-	if _, err := os.Stat(full); err != nil {
+	info, err := os.Stat(full)
+	if err != nil {
 		return state.Change{}, fmt.Errorf("%s is not in changeset %s", clean, c.ID)
 	}
+	original, err := os.ReadFile(full)
+	if err != nil {
+		return state.Change{}, err
+	}
 	if baseRev == "" {
-		b, _ := os.ReadFile(full)
-		return c, &BaseRevError{Path: clean, Content: string(b)}
+		return c, &BaseRevError{Path: clean, Content: string(original)}
 	}
 	hash, err := gitx.Run(ctx, c.Path, "hash-object", "--", full)
 	if err != nil {
 		return c, err
 	}
 	if hash != baseRev {
-		b, _ := os.ReadFile(full)
-		return c, &BaseRevError{Path: clean, Content: string(b)}
+		return c, &BaseRevError{Path: clean, Content: string(original)}
 	}
 	if err := os.Remove(full); err != nil {
 		return c, err
 	}
 	if _, err := m.commitIfNeeded(ctx, c, source); err != nil {
+		m.rollbackFile(ctx, c, clean, full, original, true)
+		_ = os.Chmod(full, info.Mode().Perm())
 		return c, err
 	}
 	return c, nil

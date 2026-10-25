@@ -19,23 +19,56 @@ builds:
     goarch:
       - amd64
       - arm64
+    flags:
+      - -trimpath
+    # Reproducible archives: use the commit time instead of build time.
+    mod_timestamp: '{{ .CommitTimestamp }}'
     ldflags:
-      - -s -w -X github.com/repocompanion/companion/internal/cli.Version={{.Version}}
+      - -s -w
+      - -X github.com/repocompanion/companion/internal/cli.Version={{ .Version }}
 
 archives:
-  - formats: [tar.gz]
+  - id: companion
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
 
 checksum:
   name_template: checksums.txt
+  algorithm: sha256
+
+# `goreleaser build --snapshot` uses this version, so CI artifacts are
+# clearly distinguishable from a tagged release.
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
 
 changelog:
   sort: asc
+  use: github
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:'
+      order: 0
+    - title: Bug fixes
+      regexp: '^fix(\(.+\))?!?:'
+      order: 1
+    - title: Other changes
+      order: 999
   filters:
     exclude:
       - '^docs:'
       - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - 'Merge pull request'
+      - 'Merge branch'
+
+release:
+  draft: false
+  prerelease: auto
+  name_template: 'v{{ .Version }}'

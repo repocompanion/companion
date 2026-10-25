@@ -12,6 +12,7 @@ import (
 
 	"github.com/repocompanion/companion/internal/codeindex"
 	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/secret"
 	"github.com/repocompanion/companion/internal/store"
 )
 
@@ -27,8 +28,7 @@ type Result struct {
 }
 
 var (
-	linkRE   = regexp.MustCompile(`\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
-	secretRE = regexp.MustCompile(`(?i)(aws_secret_access_key\s*=|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})`)
+	linkRE = regexp.MustCompile(`\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
 )
 
 func Run(s *store.Store) (*Result, error) {
@@ -149,7 +149,7 @@ func runDocs(s *store.Store, docs []*store.Doc) *Result {
 			}
 		}
 		checkLinks(s, d, res)
-		if secretRE.MatchString(d.Raw) {
+		if secret.LooksLike([]byte(d.Raw)) {
 			res.add("error", d.Path, "possible secret detected")
 		}
 	}

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/repocompanion/companion/internal/forge"
 	"github.com/repocompanion/companion/internal/gitx"
 	"github.com/repocompanion/companion/internal/lint"
+	"github.com/repocompanion/companion/internal/secret"
 	"github.com/repocompanion/companion/internal/state"
 	"github.com/repocompanion/companion/internal/store"
 	"gopkg.in/yaml.v3"
@@ -1322,7 +1322,7 @@ func (m *Manager) files(ctx context.Context, c state.Change) []string {
 }
 
 func scanSecrets(data string) bool {
-	return regexp.MustCompile(`(?i)(aws_secret_access_key\s*=|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})`).MatchString(data)
+	return secret.LooksLike([]byte(data))
 }
 
 // scanPendingSecrets checks every path that would be included by `git add -A`.

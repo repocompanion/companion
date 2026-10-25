@@ -113,7 +113,11 @@ func (s *Store) Pull(ctx context.Context) (rev string, commitTime time.Time, err
 	if err := s.MakeWritable(); err != nil {
 		return "", time.Time{}, err
 	}
-	defer func() { _ = s.MakeReadOnly() }()
+	defer func() {
+		if rerr := s.MakeReadOnly(); rerr != nil && err == nil {
+			err = fmt.Errorf("restore read-only mirror: %w", rerr)
+		}
+	}()
 
 	if _, err := gitx.Run(ctx, s.Mirror, "merge", "--ff-only", "origin/"+s.Branch); err != nil {
 		return "", time.Time{}, fmt.Errorf("fast-forward mirror (local mirror edits may need `docsync change adopt`): %w", err)
@@ -254,20 +258,27 @@ func JoinArea(area, p string) string {
 }
 
 func (s *Store) MakeWritable() error {
-	return chmodTree(s.Mirror, 0o644, 0o755)
+	return chmodTree(s.Mirror, true)
 }
 
 func (s *Store) MakeReadOnly() error {
-	return chmodTree(s.Mirror, 0o444, 0o555)
+	return chmodTree(s.Mirror, false)
 }
 
-func chmodTree(root string, fileMode, dirMode os.FileMode) error {
-	if _, err := os.Stat(root); err != nil {
+// chmodTree toggles the owner write bit while preserving the rest of each
+// entry's mode. The previous implementation forced every file to 0644 and every
+// directory to 0755, which stripped executable bits and made tracked files
+// appear modified. Symlinks are skipped: os.Chmod follows them and could change
+// permissions outside the store.
+func chmodTree(root string, writable bool) error {
+	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
 		return nil
+	} else if err != nil {
+		return err
 	}
 	return filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if d.Name() == ".git" {
 			if d.IsDir() {
@@ -275,11 +286,25 @@ func chmodTree(root string, fileMode, dirMode os.FileMode) error {
 			}
 			return nil
 		}
-		if d.IsDir() {
-			_ = os.Chmod(p, dirMode)
+		if d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
-		_ = os.Chmod(p, fileMode)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		mode := info.Mode().Perm() | 0o400
+		if d.IsDir() {
+			mode |= 0o100
+		}
+		if writable {
+			mode |= 0o200
+		} else {
+			mode &^= 0o222
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			return fmt.Errorf("chmod %s: %w", p, err)
+		}
 		return nil
 	})
 }

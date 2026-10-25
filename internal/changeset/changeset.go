@@ -2107,7 +2107,9 @@ func (m *Manager) Adopt(ctx context.Context, source string) (state.Change, error
 	// Every tracked change was just committed to the changeset and untracked
 	// files were refused above, so a hard reset discards nothing else.
 	_, err = gitx.Run(ctx, m.Store.Mirror, "reset", "-q", "--hard", "HEAD")
-	_ = m.Store.MakeReadOnly()
+	if rerr := m.Store.MakeReadOnly(); rerr != nil && err == nil {
+		err = fmt.Errorf("restore read-only mirror: %w", rerr)
+	}
 	if err != nil {
 		return c, fmt.Errorf("edits were committed to changeset %s but the main mirror could not be restored: %w", c.ID, err)
 	}

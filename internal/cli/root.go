@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/repocompanion/companion/internal/gitx"
 	"github.com/repocompanion/companion/internal/runtime"
 	"github.com/repocompanion/companion/internal/state"
+	"github.com/repocompanion/companion/internal/store"
 	"github.com/repocompanion/companion/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -183,7 +185,26 @@ func (a *App) initCmd() *cobra.Command {
 				return fmt.Errorf("set the real store remote: companion init --remote git@github.com:<org>/docs-store.git")
 			}
 			rt.Store.Remote = remote
-			if err := rt.Store.Init(context.Background()); err != nil {
+			ctx := context.Background()
+			err = rt.Store.Init(ctx)
+			if errors.Is(err, store.ErrEmptyStore) {
+				fmt.Println("store is empty; creating the initial main commit...")
+				name, email := rt.Cfg.User.Name, rt.Cfg.User.Email
+				if name == "" || email == "" {
+					detected := gitx.Detect(ctx, rt.Cwd)
+					if name == "" {
+						name = detected.Name
+					}
+					if email == "" {
+						email = detected.Email
+					}
+				}
+				if berr := rt.Store.Bootstrap(ctx, name, email); berr != nil {
+					return fmt.Errorf("seed empty store: %w", berr)
+				}
+				err = rt.Store.Init(ctx)
+			}
+			if err != nil {
 				return err
 			}
 			rt.Cfg.Remote = remote

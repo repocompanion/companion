@@ -17,6 +17,11 @@ import (
 
 const DefaultBranch = "main"
 
+// ErrEmptyStore means the remote exists but has no commits. `companion init`
+// uses this to seed the initial main branch instead of failing with a raw git
+// revision error.
+var ErrEmptyStore = errors.New("docs store has no commits")
+
 type Store struct {
 	Home      string
 	Bare      string
@@ -99,6 +104,11 @@ func (s *Store) Init(ctx context.Context) error {
 	_, _ = s.git(ctx, "fetch", "--prune", "origin")
 
 	if _, err := s.git(ctx, "rev-parse", "--verify", "refs/heads/"+s.Branch); err != nil {
+		// Distinguish a genuinely empty remote from one that uses a different
+		// default branch. An empty repository has no refs at all.
+		if refs, refErr := s.git(ctx, "for-each-ref", "--count=1", "--format=%(refname)", "refs/heads", "refs/remotes"); refErr == nil && strings.TrimSpace(refs) == "" {
+			return ErrEmptyStore
+		}
 		// Some bare clones only have remote-tracking refs after an odd fetch.
 		if _, err2 := s.git(ctx, "branch", s.Branch, "origin/"+s.Branch); err2 != nil {
 			return fmt.Errorf("store has no %q branch: %w", s.Branch, err)
@@ -111,6 +121,52 @@ func (s *Store) Init(ctx context.Context) error {
 		}
 	}
 	return s.MakeReadOnly()
+}
+
+// Bootstrap creates the first commit on an empty docs store. The commit only
+// contains the org registry; project docs are written later through changesets.
+// It is intentionally explicit: callers use ErrEmptyStore to decide when a
+// remote is safe to seed.
+func (s *Store) Bootstrap(ctx context.Context, name, email string) error {
+	if strings.TrimSpace(s.Remote) == "" {
+		return errors.New("store remote is not configured")
+	}
+	if strings.TrimSpace(name) == "" {
+		name = "companion"
+	}
+	if strings.TrimSpace(email) == "" {
+		email = "companion@localhost"
+	}
+	dir, err := os.MkdirTemp("", "companion-bootstrap-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+
+	if _, err := gitx.Run(ctx, dir, "init", "-q", "-b", s.Branch); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".companion"), 0o700); err != nil {
+		return err
+	}
+	registry := "# Org registry maintained through docs pull requests.\nteams: {}\nrepos: {}\n"
+	if err := os.WriteFile(filepath.Join(dir, ".companion", "registry.yaml"), []byte(registry), 0o644); err != nil {
+		return err
+	}
+	if _, err := gitx.Run(ctx, dir, "add", "."); err != nil {
+		return err
+	}
+	if _, err := gitx.Run(ctx, dir, "-c", "user.name="+name, "-c", "user.email="+email,
+		"commit", "-qm", "chore: initialize docs store"); err != nil {
+		return err
+	}
+	if _, err := gitx.Run(ctx, dir, "remote", "add", "origin", s.Remote); err != nil {
+		return err
+	}
+	if _, err := gitx.Run(ctx, dir, "push", "-u", "origin", s.Branch); err != nil {
+		return fmt.Errorf("push initial commit: %w", err)
+	}
+	return nil
 }
 
 // Pull fetches origin and fast-forwards the mirror.

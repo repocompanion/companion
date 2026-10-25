@@ -78,7 +78,7 @@ func New(docs []*store.Doc) *Index {
 		docLen := 0
 		for name := range fieldWeights {
 			text := fieldText(d, name)
-			tokens := Tokenize(text)
+			tokens := tokenizeAll(text)
 			counts := map[string]int{}
 			for _, t := range tokens {
 				counts[t]++
@@ -238,17 +238,32 @@ func headings(body string) []string {
 	return out
 }
 
-// Tokenize lowercases and splits identifiers while dropping stopwords.
+// Tokenize lowercases and splits text into unique, searchable terms. Queries
+// use this form so a repeated word does not weight the query more heavily.
 func Tokenize(s string) []string {
-	seen := map[string]bool{}
+	tokens := tokenizeAll(s)
+	seen := make(map[string]bool, len(tokens))
+	out := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if seen[token] {
+			continue
+		}
+		seen[token] = true
+		out = append(out, token)
+	}
+	return out
+}
+
+// tokenizeAll is the indexing form: it keeps every occurrence so term
+// frequency and document length are measured correctly by BM25.
+func tokenizeAll(s string) []string {
 	var out []string
 	for _, word := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	}) {
-		if len(word) < 2 || stopwords[word] || seen[word] {
+		if len(word) < 2 || stopwords[word] {
 			continue
 		}
-		seen[word] = true
 		out = append(out, word)
 	}
 	return out

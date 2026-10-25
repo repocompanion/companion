@@ -52,3 +52,38 @@ func TestSearchRequiresQuery(t *testing.T) {
 		t.Fatal("expected an error for a query with no searchable terms")
 	}
 }
+
+func TestTokenizeDeduplicatesQueriesButCountsIndexTokens(t *testing.T) {
+	if got := len(Tokenize("sqs sqs queue queue")); got != 2 {
+		t.Fatalf("query token count = %d, want 2 unique terms", got)
+	}
+	if got := len(tokenizeAll("sqs sqs queue queue")); got != 4 {
+		t.Fatalf("index token count = %d, want 4 occurrences", got)
+	}
+}
+
+func TestBM25UsesTermFrequency(t *testing.T) {
+	docs := []*store.Doc{
+		{
+			Path:        "org/patterns/rare.md",
+			Frontmatter: store.Frontmatter{Title: "Rare", Status: "approved"},
+			Body:        "sqs alpha beta gamma delta epsilon zeta eta theta",
+		},
+		{
+			Path:        "org/patterns/repeated.md",
+			Frontmatter: store.Frontmatter{Title: "Repeated", Status: "approved"},
+			Body:        "sqs sqs sqs sqs sqs sqs sqs sqs sqs",
+		},
+	}
+	results, err := Search(docs, "sqs", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scores := map[string]float64{}
+	for _, r := range results {
+		scores[r.Path] = r.Score
+	}
+	if scores["org/patterns/repeated.md"] <= scores["org/patterns/rare.md"] {
+		t.Fatalf("term frequency did not affect ranking: repeated=%.4f rare=%.4f", scores["org/patterns/repeated.md"], scores["org/patterns/rare.md"])
+	}
+}

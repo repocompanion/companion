@@ -80,3 +80,15 @@ func TestWriteManagedRefusesUnmanagedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAgentsMDSnapshotIsStableForSameCommit(t *testing.T) {
+	b := testBundle()
+	b.Snapshot.MainCommitTime = time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	b.Snapshot.GeneratedAt = time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	first := RenderAgentsMD(b)
+	b.Snapshot.GeneratedAt = time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)
+	second := RenderAgentsMD(b)
+	if first != second {
+		t.Fatal("managed AGENTS.md output changed with the generation time")
+	}
+}

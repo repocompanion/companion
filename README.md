@@ -489,3 +489,7 @@ manually against a sandbox repository.
   unsupported providers and path-only references may report drift as `unknown`.
 
 See `PLAN.md` for the full design and roadmap.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).

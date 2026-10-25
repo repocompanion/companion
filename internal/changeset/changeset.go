@@ -942,26 +942,20 @@ func (m *Manager) branchExists(ctx context.Context, branch string) bool {
 	return false
 }
 
-func (m *Manager) uniqueWorktreePath(base string) string {
-	for i := 1; ; i++ {
-		p := base
-		if i > 1 {
-			p = fmt.Sprintf("%s-%d", base, i)
-		}
-		if _, err := os.Stat(p); errors.Is(err, os.ErrNotExist) {
-			return p
-		}
-	}
-}
-
 func (m *Manager) uniqueWorktreePathOrError(base string) (string, error) {
 	for i := 1; i < 100; i++ {
 		p := base
 		if i > 1 {
 			p = fmt.Sprintf("%s-%d", base, i)
 		}
-		if _, err := os.Stat(p); errors.Is(err, os.ErrNotExist) {
+		_, err := os.Lstat(p)
+		switch {
+		case err == nil:
+			continue
+		case errors.Is(err, os.ErrNotExist):
 			return p, nil
+		default:
+			return "", fmt.Errorf("check worktree path %s: %w", p, err)
 		}
 	}
 	return "", fmt.Errorf("no free worktree path near %s", base)
@@ -1073,15 +1067,23 @@ func (m *Manager) Start(ctx context.Context, title, area string) (state.Change, 
 	// old branch (and potentially an old PR).
 	if m.branchExists(ctx, branch) {
 		// `change start` means a new topic, not reattaching to an old branch.
+		found := false
 		for i := 2; i < 100; i++ {
 			candidate := fmt.Sprintf("%s-%d", branch, i)
 			if !m.branchExists(ctx, candidate) {
 				branch = candidate
+				found = true
 				break
 			}
 		}
+		if !found {
+			return state.Change{}, fmt.Errorf("no available branch name near %s", branch)
+		}
 	}
-	worktree = m.uniqueWorktreePath(worktree)
+	worktree, err := m.uniqueWorktreePathOrError(worktree)
+	if err != nil {
+		return state.Change{}, err
+	}
 	if err := os.MkdirAll(m.Store.Changes, 0o755); err != nil {
 		return state.Change{}, err
 	}

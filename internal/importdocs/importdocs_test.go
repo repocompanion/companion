@@ -3,6 +3,7 @@ package importdocs
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -92,5 +93,53 @@ func TestScanMapsUnresolvedByDestinationKind(t *testing.T) {
 	}
 	if len(report.Entries) != 1 || report.Entries[0].Status != StatusReady || report.Entries[0].Kind != "adr" {
 		t.Fatalf("entry = %+v", report.Entries)
+	}
+}
+
+func TestScanRejectsSymlinkedMarkdown(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation may require elevated privileges on Windows")
+	}
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("# Outside\n\nnot part of the import tree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "leak.md")); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Scan(root, "projects/acme/api", Options{
+		Owners: []string{"payments"},
+		Now:    time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Entries) != 1 {
+		t.Fatalf("entries = %+v", report.Entries)
+	}
+	if e := report.Entries[0]; e.Status != StatusUnresolved || !strings.Contains(e.Reason, "symlink") {
+		t.Fatalf("symlink entry = %+v", e)
+	}
+}
+
+func TestScanRejectsOversizedMarkdown(t *testing.T) {
+	root := t.TempDir()
+	content := strings.Repeat("# Heading\n\nbody\n", maxImportFileSize/10+1)
+	if err := os.WriteFile(filepath.Join(root, "huge.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Scan(root, "projects/acme/api", Options{
+		Owners: []string{"payments"},
+		Now:    time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Entries) != 1 {
+		t.Fatalf("entries = %+v", report.Entries)
+	}
+	if e := report.Entries[0]; e.Status != StatusUnresolved || !strings.Contains(e.Reason, "import limit") {
+		t.Fatalf("oversized entry = %+v", e)
 	}
 }

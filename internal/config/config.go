@@ -17,6 +17,7 @@ import (
 
 	"github.com/repocompanion/companion/internal/docrules"
 	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/store"
 	"gopkg.in/yaml.v3"
 )
 
@@ -244,7 +245,7 @@ func LoadRepo(root string) (RepoConfig, error) {
 	if root == "" {
 		return c, nil
 	}
-	b, err := os.ReadFile(filepath.Join(root, ".companion.yaml"))
+	b, err := store.ReadFileUnder(root, ".companion.yaml")
 	if errors.Is(err, os.ErrNotExist) {
 		return c, nil
 	}
@@ -273,8 +274,8 @@ func LoadRegistry(storeRoot string) (Registry, error) {
 	if storeRoot == "" {
 		return r, nil
 	}
-	p := filepath.Join(storeRoot, ".companion", "registry.yaml")
-	b, err := os.ReadFile(p)
+	p := filepath.Join(".companion", "registry.yaml")
+	b, err := store.ReadFileUnder(storeRoot, p)
 	if errors.Is(err, os.ErrNotExist) {
 		return r, nil
 	}
@@ -625,7 +626,7 @@ func LoadCodeOwners(storeRoot string) []CodeOwnerRule {
 	var b []byte
 	var err error
 	for _, rel := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
-		b, err = os.ReadFile(filepath.Join(storeRoot, rel))
+		b, err = store.ReadFileUnder(storeRoot, rel)
 		if err == nil {
 			break
 		}

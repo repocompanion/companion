@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -172,5 +173,42 @@ func TestResolveWarnsOnInvalidProject(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("warnings = %v", ctx.Warnings)
+	}
+}
+
+func TestLoadRegistryRejectsSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation may require elevated privileges on Windows")
+	}
+	storeRoot := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "registry.yaml")
+	if err := os.WriteFile(outside, []byte("teams:\n  stolen:\n    domain: secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(storeRoot, ".companion"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(storeRoot, ".companion", "registry.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRegistry(storeRoot); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("expected symlink escape rejection, got %v", err)
+	}
+}
+
+func TestLoadRepoRejectsSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation may require elevated privileges on Windows")
+	}
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(outside, []byte("project: stolen/repo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, ".companion.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRepo(root); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("expected symlink escape rejection, got %v", err)
 	}
 }

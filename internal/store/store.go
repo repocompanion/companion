@@ -219,6 +219,22 @@ func (s *Store) Read(rel string) (string, error) {
 	return string(b), nil
 }
 
+// ReadFileUnder reads rel beneath root with the same containment rules as a
+// store read. Config files, CODEOWNERS and registry files are content from a
+// cloned repository, so following a tracked symlink outside root would turn a
+// read into an arbitrary local-file disclosure.
+func ReadFileUnder(root, rel string) ([]byte, error) {
+	if strings.TrimSpace(root) == "" {
+		return nil, errors.New("root is required")
+	}
+	st := &Store{Mirror: root}
+	full, err := st.Abs(rel)
+	if err != nil {
+		return nil, err
+	}
+	return os.ReadFile(full)
+}
+
 func (s *Store) ExistsPath(rel string) bool {
 	full, err := s.Abs(rel)
 	if err != nil {

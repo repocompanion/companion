@@ -62,7 +62,10 @@ func (a *App) editCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			full := filepath.Join(c.Path, filepath.FromSlash(rel))
+			full, err := s.Manager.WorktreePath(c, rel)
+			if err != nil {
+				return err
+			}
 			if _, err := os.Stat(full); err != nil {
 				return fmt.Errorf("%s is not in changeset %s; use `companion new` first", rel, c.ID)
 			}

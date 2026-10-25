@@ -2573,6 +2573,19 @@ func (m *Manager) HashFile(ctx context.Context, c state.Change, rel string) (str
 	return gitx.Run(ctx, c.Path, "hash-object", "--", full)
 }
 
+// WorktreePath resolves a document path inside a changeset worktree. It
+// enforces the changeset's area and rejects escapes and symlink components, so
+// callers such as `companion edit` cannot be redirected to a file outside the
+// store by a tracked symlink.
+func (m *Manager) WorktreePath(c state.Change, rel string) (string, error) {
+	rel = store.RelativeToArea(c.Area, rel)
+	clean, err := store.EnsureArea(c.Area, rel)
+	if err != nil {
+		return "", err
+	}
+	return safeWorktreePath(c.Path, clean)
+}
+
 // DeleteFile removes a document from the active changeset and commits the
 // deletion. base_rev must match the current blob to avoid deleting a newer edit.
 func (m *Manager) DeleteFile(ctx context.Context, area, rel, baseRev, source string) (state.Change, error) {

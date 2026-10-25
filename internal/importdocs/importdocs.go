@@ -24,6 +24,11 @@ const (
 	StatusReady      = "ready"
 	StatusUnresolved = "unresolved"
 	StatusCollision  = "collision"
+
+	// maxImportFileSize bounds a single legacy document. Imports are an
+	// explicit local action, but an unbounded read of an untrusted tree should
+	// not be able to exhaust memory.
+	maxImportFileSize = 2 << 20
 )
 
 type Options struct {
@@ -100,6 +105,19 @@ func Scan(source, area string, opts Options) (*Report, error) {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
+		if d.Type()&os.ModeSymlink != 0 {
+			report.Entries = append(report.Entries, Entry{
+				Source: rel, Status: StatusUnresolved, Reason: "symlinks are not imported",
+			})
+			return nil
+		}
+		if info, err := d.Info(); err == nil && info.Size() > maxImportFileSize {
+			report.Entries = append(report.Entries, Entry{
+				Source: rel, Status: StatusUnresolved,
+				Reason: fmt.Sprintf("file exceeds the %d-byte import limit", maxImportFileSize),
+			})
+			return nil
+		}
 		raw, err := os.ReadFile(p)
 		if err != nil {
 			report.Entries = append(report.Entries, Entry{Source: rel, Status: StatusUnresolved, Reason: err.Error()})

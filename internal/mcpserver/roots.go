@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/repocompanion/companion/internal/gitx"
@@ -45,6 +46,15 @@ func (p *provider) invalidateRoot(session *mcp.ServerSession) {
 }
 
 func discoverRoot(ctx context.Context, session *mcp.ServerSession) string {
+	// Asking for roots when the client did not advertise the capability can
+	// block the first tool call indefinitely: clients are allowed to ignore
+	// unknown server-initiated requests. Check the capability first, and keep a
+	// short deadline for clients that advertise roots but do not answer.
+	if !clientSupportsRoots(session) {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 	res, err := session.ListRoots(ctx, nil)
 	if err != nil || res == nil {
 		return ""
@@ -70,6 +80,14 @@ func discoverRoot(ctx context.Context, session *mcp.ServerSession) string {
 		}
 	}
 	return fallback
+}
+
+func clientSupportsRoots(session *mcp.ServerSession) bool {
+	if session == nil {
+		return false
+	}
+	params := session.InitializeParams()
+	return params != nil && params.Capabilities != nil && params.Capabilities.RootsV2 != nil
 }
 
 func fileRootPath(uri string) string {

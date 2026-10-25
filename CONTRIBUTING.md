@@ -19,7 +19,7 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Requirements
 
-- Go 1.25 or newer
+- Go 1.27.3 or newer
 - Git 2.30 or newer
 - Optional: Universal Ctags for non-Go symbol indexing
 

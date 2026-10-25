@@ -125,7 +125,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.27.x'
       - run: go install github.com/repocompanion/companion/cmd/companion@latest
       - run: companion lint --store .
       - uses: DavidAnson/markdownlint-cli2-action@v19

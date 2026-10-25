@@ -1014,7 +1014,7 @@ func (m *Manager) reuseRemoteBranch(ctx context.Context, branch, area string) (s
 			return state.Change{}, err
 		}
 	}
-	if err := os.MkdirAll(m.Store.Changes, 0o755); err != nil {
+	if err := os.MkdirAll(m.Store.Changes, 0o700); err != nil {
 		return state.Change{}, err
 	}
 	if _, err := os.Stat(worktree); errors.Is(err, os.ErrNotExist) {
@@ -1084,7 +1084,7 @@ func (m *Manager) Start(ctx context.Context, title, area string) (state.Change, 
 	if err != nil {
 		return state.Change{}, err
 	}
-	if err := os.MkdirAll(m.Store.Changes, 0o755); err != nil {
+	if err := os.MkdirAll(m.Store.Changes, 0o700); err != nil {
 		return state.Change{}, err
 	}
 
@@ -1253,7 +1253,7 @@ func (m *Manager) Join(ctx context.Context, number int) (state.Change, error) {
 	if _, err := os.Stat(worktree); err == nil {
 		return state.Change{}, fmt.Errorf("worktree already exists at %s", worktree)
 	}
-	if err := os.MkdirAll(m.Store.Changes, 0o755); err != nil {
+	if err := os.MkdirAll(m.Store.Changes, 0o700); err != nil {
 		return state.Change{}, err
 	}
 	if localExists {

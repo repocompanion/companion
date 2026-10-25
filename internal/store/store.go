@@ -68,6 +68,15 @@ func (s *Store) Init(ctx context.Context) error {
 	if err := os.MkdirAll(s.Changes, 0o700); err != nil {
 		return err
 	}
+	// MkdirAll does not tighten a directory that already exists. Older installs
+	// (or a pre-created COMPANION_HOME) could leave doc checkouts readable by
+	// other local users.
+	if err := os.Chmod(s.Home, 0o700); err != nil {
+		return fmt.Errorf("secure companion home: %w", err)
+	}
+	if err := os.Chmod(s.Changes, 0o700); err != nil {
+		return fmt.Errorf("secure changes directory: %w", err)
+	}
 	if s.Remote == "" {
 		return errors.New("store remote is not configured; run companion init --remote <url>")
 	}

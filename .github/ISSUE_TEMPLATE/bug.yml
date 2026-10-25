@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a reproducible problem with the CLI, MCP server, or docs workflow
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please remove tokens, private URLs, hostnames,
+        and document contents before submitting. Security issues must use the
+        private process in SECURITY.md instead of this form.
+  - type: input
+    id: version
+    attributes:
+      label: companion version
+      description: Output of `companion version`
+      placeholder: v0.1.1
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: Install method
+      description: Release archive, `go install`, source build, or another method
+      placeholder: GitHub release archive for darwin/arm64
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: The smallest sequence of commands or MCP calls that shows the problem
+      placeholder: |
+        1. companion init --remote ...
+        2. companion change start ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full error text with secrets removed
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Sanitized `companion doctor --json`
+      description: Remove private paths, remotes, and hostnames if needed
+      render: json
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: I removed tokens, private URLs, hostnames, and document contents.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

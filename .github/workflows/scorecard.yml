@@ -1,0 +1,43 @@
+name: scorecard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 3 * * 1'
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: OpenSSF Scorecard
+    # The Scorecard publishing API requires a public repository. Keep the
+    # workflow valid while the repository is private and publish after launch.
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 7
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif

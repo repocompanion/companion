@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a user-facing improvement or a change to the docs workflow
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem and the outcome you want. This project is pre-1.0
+        and keeps a focused scope; see ROADMAP.md for current priorities and
+        non-goals.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard, missing, or surprising today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: What should a user or agent be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Current workarounds, other tools, or smaller changes
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - MCP server
+        - Documentation store
+        - Guidance / search
+        - Code references
+        - GitHub / PR workflow
+        - Docs / onboarding
+        - Other
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

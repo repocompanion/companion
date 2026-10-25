@@ -59,7 +59,7 @@ func TestRedactRemoteHidesCredentials(t *testing.T) {
 		"https://x-access-token:ghp_abcdefghijklmnopqrstuvwxyz@github.com/acme/api.git": "https://***@github.com/acme/api.git",
 		"https://github.com/acme/api.git":                                               "https://github.com/acme/api.git",
 		"git@github.com:acme/api.git":                                                   "git@github.com:acme/api.git",
-		"failed to clone https://user:secret@example.com/store.git":                      "failed to clone https://***@example.com/store.git",
+		"failed to clone https://user:secret@example.com/store.git":                     "failed to clone https://***@example.com/store.git",
 	}
 	for in, want := range cases {
 		if got := RedactRemote(in); got != want {

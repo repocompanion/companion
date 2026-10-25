@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -158,6 +159,14 @@ func NewServer(opts Options) (*mcp.Server, error) {
 }
 
 func Run(ctx context.Context, opts Options) error {
+	// The MCP transport has no terminal. Without this, a missing HTTPS
+	// credential or SSH passphrase prompt can block a tool call forever.
+	if os.Getenv("GIT_TERMINAL_PROMPT") == "" {
+		_ = os.Setenv("GIT_TERMINAL_PROMPT", "0")
+	}
+	if os.Getenv("GCM_INTERACTIVE") == "" {
+		_ = os.Setenv("GCM_INTERACTIVE", "never")
+	}
 	server, err := NewServer(opts)
 	if err != nil {
 		return err

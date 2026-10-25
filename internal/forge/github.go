@@ -127,7 +127,9 @@ func NewFromRemote(remote string, cfg config.ForgeConfig) (*Client, error) {
 }
 
 func ghAuthToken() string {
-	out, err := exec.Command("gh", "auth", "token").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
 	if err != nil {
 		return ""
 	}

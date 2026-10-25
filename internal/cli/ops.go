@@ -371,7 +371,9 @@ func (a *App) doctorCmd() *cobra.Command {
 			if strict {
 				failed := 0
 				for _, c := range checks {
-					if !c.OK {
+					// ctags is optional; its absence should not fail a strict
+					// setup check for a Go-only store.
+					if !c.OK && c.Name != "code provider ctags" {
 						failed++
 					}
 				}

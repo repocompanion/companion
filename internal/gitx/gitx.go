@@ -112,7 +112,7 @@ func Detect(ctx context.Context, cwd string) Detected {
 
 var (
 	scpRemote  = regexp.MustCompile(`^([^@/:]+@)?([^:/]+):(.+)$`)
-	drivePath  = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
+	drivePath  = regexp.MustCompile(`^[A-Za-z]:[\\/]?`)
 	repoPartRE = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 )
 

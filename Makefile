@@ -1,6 +1,6 @@
 BINARY := companion
 VERSION ?= dev
-LDFLAGS := -s -w -X github.com/repocompanion/companion/internal/cli.Version=$(VERSION)
+LDFLAGS := -s -w -X github.com/repocompanion/companion/internal/version.Version=$(VERSION)
 
 # `go install` destination. Defaults to $GOBIN, then $GOPATH/bin.
 GOBIN ?= $(shell go env GOBIN)

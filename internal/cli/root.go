@@ -14,10 +14,9 @@ import (
 	"github.com/repocompanion/companion/internal/gitx"
 	"github.com/repocompanion/companion/internal/runtime"
 	"github.com/repocompanion/companion/internal/state"
+	"github.com/repocompanion/companion/internal/version"
 	"github.com/spf13/cobra"
 )
-
-var Version = "dev"
 
 type App struct {
 	Cwd       string
@@ -36,7 +35,7 @@ func NewRootCommand() *cobra.Command {
 	a := &App{}
 	root := &cobra.Command{
 		Use:           "companion",
-		Version:       Version,
+		Version:       version.String(),
 		Short:         "Git-backed project docs for humans and coding agents",
 		Long:          "Repo Companion keeps project documentation in one central Git repository. Every change goes through a changeset and a GitHub PR.",
 		SilenceUsage:  true,
@@ -92,6 +91,7 @@ func NewRootCommand() *cobra.Command {
 		a.configCmd(),
 		a.registryCmd(),
 		a.doctorCmd(),
+		a.versionCmd(),
 		a.mcpCmd(),
 	)
 	return root

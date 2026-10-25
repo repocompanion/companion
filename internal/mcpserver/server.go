@@ -19,6 +19,7 @@ import (
 	"github.com/repocompanion/companion/internal/runtime"
 	"github.com/repocompanion/companion/internal/search"
 	"github.com/repocompanion/companion/internal/store"
+	"github.com/repocompanion/companion/internal/version"
 )
 
 const serverInstructions = `Repo Companion is the local entry point for project documentation and organization guidance.
@@ -134,7 +135,7 @@ func NewServer(opts Options) (*mcp.Server, error) {
 	}
 	p := &provider{opts: opts, roots: map[*mcp.ServerSession]string{}, rootsKnown: map[*mcp.ServerSession]bool{}}
 	server := mcp.NewServer(&mcp.Implementation{
-		Name: "companion", Title: "Repo Companion", Version: "0.1.0",
+		Name: "companion", Title: "Repo Companion", Version: version.String(),
 		Description: "Git-backed project docs and guidance for coding agents",
 	}, &mcp.ServerOptions{
 		Instructions: serverInstructions,

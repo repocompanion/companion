@@ -25,7 +25,7 @@ builds:
     mod_timestamp: '{{ .CommitTimestamp }}'
     ldflags:
       - -s -w
-      - -X github.com/repocompanion/companion/internal/cli.Version={{ .Version }}
+      - -X github.com/repocompanion/companion/internal/version.Version={{ .Version }}
 
 archives:
   - id: companion

@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 // Kinds are the canonical document kinds. "architecture" is intentionally not
@@ -159,13 +159,13 @@ func validTeamSegment(s string) bool {
 }
 
 // ValidateArea accepts exactly org, teams/<team>, projects/<owner>/<repo> or
-// .docsync. Allowing deeper or nested areas makes AreaForPath, active-overlay
+// .companion. Allowing deeper or nested areas makes AreaForPath, active-overlay
 // merging and per-area locks disagree about which changeset owns a document.
 func ValidateArea(area string) error {
 	trimmed := strings.Trim(area, "/")
 	parts := strings.Split(trimmed, "/")
 	switch {
-	case trimmed == ".docsync":
+	case trimmed == ".companion":
 		return nil
 	case trimmed == "org":
 		return nil
@@ -174,7 +174,7 @@ func ValidateArea(area string) error {
 	case len(parts) == 3 && parts[0] == "projects" && ValidateProject(parts[1]+"/"+parts[2]) == nil:
 		return nil
 	default:
-		return fmt.Errorf("area must be exactly org, teams/<team>, projects/<owner>/<repo> or .docsync: %q", area)
+		return fmt.Errorf("area must be exactly org, teams/<team>, projects/<owner>/<repo> or .companion: %q", area)
 	}
 }
 
@@ -182,8 +182,8 @@ func ValidateArea(area string) error {
 func AreaForPath(p string) (string, error) {
 	parts := strings.Split(strings.Trim(p, "/"), "/")
 	switch {
-	case len(parts) >= 1 && parts[0] == ".docsync":
-		return ".docsync", nil
+	case len(parts) >= 1 && parts[0] == ".companion":
+		return ".companion", nil
 	case len(parts) >= 1 && parts[0] == "org":
 		return "org", nil
 	case len(parts) >= 2 && parts[0] == "teams":

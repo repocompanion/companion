@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 func TestLoadUserAppliesRemoteEnvWithoutConfigFile(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("DOCSYNC_CONFIG", filepath.Join(dir, "missing.yaml"))
-	t.Setenv("DOCSYNC_REMOTE", "git@github.com:acme/store.git")
+	t.Setenv("COMPANION_CONFIG", filepath.Join(dir, "missing.yaml"))
+	t.Setenv("COMPANION_REMOTE", "git@github.com:acme/store.git")
 
 	cfg, err := LoadUser()
 	if err != nil {

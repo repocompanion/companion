@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/codeindex"
-	"github.com/bolacha/docsync/internal/docrules"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/codeindex"
+	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 type Issue struct {

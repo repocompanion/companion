@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func TestValidateDoc(t *testing.T) {
@@ -107,7 +107,7 @@ func TestValidateReferences(t *testing.T) {
 }
 
 func TestValidateAreaRequiresCanonicalDepth(t *testing.T) {
-	valid := []string{"org", "teams/payments", "teams/data platform", "projects/acme/api", ".docsync", "/org/", "projects/acme/api/"}
+	valid := []string{"org", "teams/payments", "teams/data platform", "projects/acme/api", ".companion", "/org/", "projects/acme/api/"}
 	for _, area := range valid {
 		if err := ValidateArea(area); err != nil {
 			t.Errorf("ValidateArea(%q) = %v, want nil", area, err)
@@ -117,7 +117,7 @@ func TestValidateAreaRequiresCanonicalDepth(t *testing.T) {
 		"", "teams", "teams/", "teams/payments/extra", "teams/..", "projects/acme",
 		"projects/acme/api/extra", "org/payments", "org//payments",
 		"projects/../api", "projects/acme/..", "projects/acme/api//x",
-		"projects/acme/api?x", ".docsync/registry", "random",
+		"projects/acme/api?x", ".companion/registry", "random",
 	}
 	for _, area := range invalid {
 		if err := ValidateArea(area); err == nil {

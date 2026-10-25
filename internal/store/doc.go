@@ -163,7 +163,7 @@ func WalkDocsAt(root, dir string) ([]*Doc, error) {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if name == ".git" || name == ".docsync" || name == ".github" || name == "node_modules" {
+			if name == ".git" || name == ".companion" || name == ".github" || name == "node_modules" {
 				return filepath.SkipDir
 			}
 			return nil

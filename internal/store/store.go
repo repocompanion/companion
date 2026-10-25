@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 const DefaultBranch = "main"
@@ -29,7 +29,7 @@ type Store struct {
 
 func New(home, remote string) *Store {
 	if remote == "" {
-		remote = os.Getenv("DOCSYNC_REMOTE")
+		remote = os.Getenv("COMPANION_REMOTE")
 	}
 	if remote == "" {
 		remote = "git@github.com:your-org/docs-store.git"
@@ -69,7 +69,7 @@ func (s *Store) Init(ctx context.Context) error {
 		return err
 	}
 	if s.Remote == "" {
-		return errors.New("store remote is not configured; run docsync init --remote <url>")
+		return errors.New("store remote is not configured; run companion init --remote <url>")
 	}
 	if _, err := os.Stat(s.Bare); errors.Is(err, os.ErrNotExist) {
 		if _, err := gitx.Run(ctx, s.Home, "clone", "--bare", s.Remote, s.Bare); err != nil {
@@ -120,7 +120,7 @@ func (s *Store) Pull(ctx context.Context) (rev string, commitTime time.Time, err
 	}()
 
 	if _, err := gitx.Run(ctx, s.Mirror, "merge", "--ff-only", "origin/"+s.Branch); err != nil {
-		return "", time.Time{}, fmt.Errorf("fast-forward mirror (local mirror edits may need `docsync change adopt`): %w", err)
+		return "", time.Time{}, fmt.Errorf("fast-forward mirror (local mirror edits may need `companion change adopt`): %w", err)
 	}
 	rev, commitTime, err = s.MirrorRev(ctx)
 	return rev, commitTime, err

@@ -1,4 +1,4 @@
-// Package codeindex validates and indexes code references from docsync
+// Package codeindex validates and indexes code references from companion
 // documents. It provides path validation, a grep fallback, a native Go provider
 // and an optional Universal Ctags provider.
 package codeindex

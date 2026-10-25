@@ -1,4 +1,4 @@
-// Package mcpserver exposes docsync through the Model Context Protocol.
+// Package mcpserver exposes companion through the Model Context Protocol.
 package mcpserver
 
 import (
@@ -11,23 +11,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/codeindex"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/guidance"
-	"github.com/bolacha/docsync/internal/runtime"
-	"github.com/bolacha/docsync/internal/search"
-	"github.com/bolacha/docsync/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/codeindex"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/guidance"
+	"github.com/repocompanion/companion/internal/runtime"
+	"github.com/repocompanion/companion/internal/search"
+	"github.com/repocompanion/companion/internal/store"
 )
 
-const serverInstructions = `docsync is the local entry point for project documentation and organization guidance.
+const serverInstructions = `Repo Companion is the local entry point for project documentation and organization guidance.
 
 Before implementing infrastructure, integration or cross-cutting code (queues, databases, migrations, observability, APIs, auth), call docs_get_guidance.
 Before writing or refining documentation, call docs_get_context. If the mirror is stale, call docs_pull first.
 For a project with no docs, call docs_scaffold_project before writing; do not invent a flat layout.
 
-Never write docs into the code repo. All doc changes go through docsync tools and become PRs.
+Never write docs into the code repo. All doc changes go through these tools and become PRs.
 docs_write enforces YAML frontmatter and canonical paths (README.md, architecture.md, adr/, flows/, runbooks/, patterns/, standards/). When it rejects a document, read docs_get_context.structure and reorganize rather than retrying the same flat file.
 Use docs_change_sync to create/update a draft PR, docs_change_submit when the work is ready for review,
 and docs_review_comments to address feedback. Agents can never merge, abandon or clean up changesets.
@@ -90,7 +90,7 @@ func (p *provider) sessionFor(ctx context.Context, session *mcp.ServerSession, p
 
 func requireStore(s *runtime.Session) error {
 	if !s.Runtime.Store.Exists() {
-		return errors.New("docsync store is not initialized; run `docsync init --remote <git@github.com:org/docs-store.git>`")
+		return errors.New("companion store is not initialized; run `companion init --remote <git@github.com:org/docs-store.git>`")
 	}
 	return nil
 }
@@ -134,7 +134,7 @@ func NewServer(opts Options) (*mcp.Server, error) {
 	}
 	p := &provider{opts: opts, roots: map[*mcp.ServerSession]string{}, rootsKnown: map[*mcp.ServerSession]bool{}}
 	server := mcp.NewServer(&mcp.Implementation{
-		Name: "docsync", Title: "docsync", Version: "0.1.0",
+		Name: "companion", Title: "Repo Companion", Version: "0.1.0",
 		Description: "Git-backed project docs and guidance for coding agents",
 	}, &mcp.ServerOptions{
 		Instructions: serverInstructions,
@@ -832,7 +832,7 @@ func resolvePath(s *runtime.Session, p string) (string, error) {
 	if p == "" {
 		return "", errors.New("path is required")
 	}
-	if strings.HasPrefix(p, "org/") || strings.HasPrefix(p, "teams/") || strings.HasPrefix(p, "projects/") || strings.HasPrefix(p, ".docsync/") {
+	if strings.HasPrefix(p, "org/") || strings.HasPrefix(p, "teams/") || strings.HasPrefix(p, "projects/") || strings.HasPrefix(p, ".companion/") {
 		return store.CleanRel(p)
 	}
 	area := s.Context.ProjectArea()

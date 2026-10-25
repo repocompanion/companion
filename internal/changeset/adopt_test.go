@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 func editMirror(t *testing.T, m *Manager, rel, appended string) string {

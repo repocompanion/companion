@@ -11,10 +11,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/forge"
-	"github.com/bolacha/docsync/internal/state"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/forge"
+	"github.com/repocompanion/companion/internal/state"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func TestSyncAndSubmitWithFakeGitHub(t *testing.T) {
@@ -96,7 +96,7 @@ func TestSyncAndSubmitWithFakeGitHub(t *testing.T) {
 	if fake.Draft() {
 		t.Fatal("skip-lint submit did not mark the PR ready")
 	}
-	if !strings.Contains(fake.body, "Docsync-Source: test") {
+	if !strings.Contains(fake.body, "Companion-Source: test") {
 		t.Fatalf("submit did not write squash trailers: %s", fake.body)
 	}
 	if _, err := m.Reopen(ctx, c.ID); err != nil {

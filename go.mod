@@ -1,4 +1,4 @@
-module github.com/bolacha/docsync
+module github.com/repocompanion/companion
 
 go 1.25.0
 

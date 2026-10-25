@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 func TestEnsureNamedReusesSingleRemoteBranch(t *testing.T) {

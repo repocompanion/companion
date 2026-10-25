@@ -1,6 +1,6 @@
-BINARY := docsync
+BINARY := companion
 VERSION ?= dev
-LDFLAGS := -s -w -X github.com/bolacha/docsync/internal/cli.Version=$(VERSION)
+LDFLAGS := -s -w -X github.com/repocompanion/companion/internal/cli.Version=$(VERSION)
 
 # `go install` destination. Defaults to $GOBIN, then $GOPATH/bin.
 GOBIN ?= $(shell go env GOBIN)
@@ -11,10 +11,10 @@ endif
 .PHONY: build test vet fmt install clean
 
 build:
-	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/docsync
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/companion
 
 install:
-	GOBIN="$(GOBIN)" go install -trimpath -ldflags "$(LDFLAGS)" ./cmd/docsync
+	GOBIN="$(GOBIN)" go install -trimpath -ldflags "$(LDFLAGS)" ./cmd/companion
 	@echo "installed $(BINARY) to $(GOBIN)/$(BINARY)"
 
 test:

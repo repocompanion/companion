@@ -1,6 +1,6 @@
 // Package gitx is a small wrapper around the system git binary.
 //
-// docsync deliberately uses the developer's git installation instead of a
+// companion deliberately uses the developer's git installation instead of a
 // library. That keeps SSH keys, credential helpers and worktree behaviour
 // identical to the commands developers already use.
 package gitx

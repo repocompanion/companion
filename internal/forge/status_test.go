@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/config"
+	"github.com/repocompanion/companion/internal/config"
 )
 
 func TestStatusIncludesChecksAndReviewThreads(t *testing.T) {

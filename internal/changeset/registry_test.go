@@ -19,7 +19,7 @@ func TestLoadRegistryPrefersWorktreeAndRejectsMalformed(t *testing.T) {
 		t.Fatalf("empty store returned mappings: %+v", reg.Repos)
 	}
 
-	writeFile(t, c.Path, ".docsync/registry.yaml", "repos:\n  acme/api:\n    team: payments\n")
+	writeFile(t, c.Path, ".companion/registry.yaml", "repos:\n  acme/api:\n    team: payments\n")
 	reg, err = m.LoadRegistry(c)
 	if err != nil {
 		t.Fatal(err)
@@ -28,8 +28,8 @@ func TestLoadRegistryPrefersWorktreeAndRejectsMalformed(t *testing.T) {
 		t.Fatalf("worktree registry was not used: %+v", got)
 	}
 
-	writeFile(t, c.Path, ".docsync/registry.yaml", "repos: [\n")
-	if _, err := m.LoadRegistry(c); err == nil || !strings.Contains(err.Error(), "parse .docsync/registry.yaml") {
+	writeFile(t, c.Path, ".companion/registry.yaml", "repos: [\n")
+	if _, err := m.LoadRegistry(c); err == nil || !strings.Contains(err.Error(), "parse .companion/registry.yaml") {
 		t.Fatalf("expected a parse error, got %v", err)
 	}
 }

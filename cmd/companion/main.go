@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bolacha/docsync/internal/cli"
+	"github.com/repocompanion/companion/internal/cli"
 )
 
 func main() {
 	root := cli.NewRootCommand()
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "docsync:", err)
+		fmt.Fprintln(os.Stderr, "companion:", err)
 		os.Exit(1)
 	}
 }

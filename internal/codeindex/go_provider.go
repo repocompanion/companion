@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/gitx"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -461,14 +461,14 @@ func symbolFingerprint(s Symbol) string {
 }
 
 func defaultCodeCacheDir() string {
-	if home := strings.TrimSpace(os.Getenv("DOCSYNC_HOME")); home != "" {
+	if home := strings.TrimSpace(os.Getenv("COMPANION_HOME")); home != "" {
 		return filepath.Join(home, "cache", "code")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".docsync", "cache", "code")
+	return filepath.Join(home, ".companion", "cache", "code")
 }
 
 func (p *GoProvider) cachePath(req IndexRequest) string {

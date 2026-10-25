@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func TestBM25FieldWeighting(t *testing.T) {

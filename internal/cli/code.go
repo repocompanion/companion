@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bolacha/docsync/internal/codeindex"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/runtime"
+	"github.com/repocompanion/companion/internal/codeindex"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/runtime"
 	"github.com/spf13/cobra"
 )
 

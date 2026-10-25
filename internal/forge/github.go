@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/gitx"
 	"github.com/google/go-github/v68/github"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 type PR struct {
@@ -76,7 +76,7 @@ func NewFromRemote(remote string, cfg config.ForgeConfig) (*Client, error) {
 	if err != nil {
 		return &Client{enabled: false}, nil
 	}
-	token := strings.TrimSpace(os.Getenv("DOCSYNC_FORGE_TOKEN"))
+	token := strings.TrimSpace(os.Getenv("COMPANION_FORGE_TOKEN"))
 	if token == "" {
 		token = strings.TrimSpace(cfg.Token)
 	}
@@ -130,7 +130,7 @@ func (c *Client) RepoName() string {
 
 func (c *Client) require() error {
 	if !c.Available() {
-		return errors.New("GitHub token unavailable; set DOCSYNC_FORGE_TOKEN or run `gh auth login`")
+		return errors.New("GitHub token unavailable; set COMPANION_FORGE_TOKEN or run `gh auth login`")
 	}
 	return nil
 }
@@ -410,17 +410,17 @@ func (c *Client) graphqlURL() (string, error) {
 	return u.String(), nil
 }
 
-const bodyBegin = "<!-- docsync:begin -->"
-const bodyEnd = "<!-- docsync:end -->"
+const bodyBegin = "<!-- companion:begin -->"
+const bodyEnd = "<!-- companion:end -->"
 
 // ManagedBody preserves human-written text outside the managed marker block.
 func ManagedBody(existing, changesetID, area string, files []string, trailers ...string) string {
 	var b strings.Builder
 	b.WriteString(bodyBegin)
 	b.WriteString("\n")
-	fmt.Fprintf(&b, "Docsync-Changeset: %s\n", changesetID)
-	fmt.Fprintf(&b, "Docsync-Area: %s\n", area)
-	b.WriteString("Docsync-Files:\n")
+	fmt.Fprintf(&b, "Companion-Changeset: %s\n", changesetID)
+	fmt.Fprintf(&b, "Companion-Area: %s\n", area)
+	b.WriteString("Companion-Files:\n")
 	for _, f := range files {
 		fmt.Fprintf(&b, "- `%s`\n", f)
 	}
@@ -446,8 +446,8 @@ func ManagedBody(existing, changesetID, area string, files []string, trailers ..
 
 func AreaFromBody(body string) string {
 	for _, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(line, "Docsync-Area:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "Docsync-Area:"))
+		if strings.HasPrefix(line, "Companion-Area:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Companion-Area:"))
 		}
 	}
 	return ""
@@ -455,8 +455,8 @@ func AreaFromBody(body string) string {
 
 func ChangesetFromBody(body string) string {
 	for _, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(line, "Docsync-Changeset:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "Docsync-Changeset:"))
+		if strings.HasPrefix(line, "Companion-Changeset:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Companion-Changeset:"))
 		}
 	}
 	return ""

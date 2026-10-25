@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bolacha/docsync/internal/export"
-	"github.com/bolacha/docsync/internal/runtime"
+	"github.com/repocompanion/companion/internal/export"
+	"github.com/repocompanion/companion/internal/runtime"
 	"github.com/spf13/cobra"
 )
 

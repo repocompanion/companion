@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/forge"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/state"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/forge"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/state"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func TestLocalChangesetLifecycle(t *testing.T) {
@@ -88,7 +88,7 @@ func TestLocalChangesetLifecycle(t *testing.T) {
 		t.Fatal("host-side branch commit was not integrated")
 	}
 
-	// A ready changeset is frozen for docsync writes.
+	// A ready changeset is frozen for companion writes.
 	if err := m.State.With(func(f *state.File) error {
 		ch := f.ByID(c.ID)
 		ch.PRState = "ready"

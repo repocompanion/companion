@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/state"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/state"
 )
 
 const cleanupDoc = "---\nid: cleanup-work\nkind: flow\ntitle: Cleanup work\nstatus: approved\nowners: [payments]\nlast_reviewed: 2026-01-01\n---\n# Cleanup work\n"

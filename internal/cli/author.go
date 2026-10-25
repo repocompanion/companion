@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/docrules"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/runtime"
-	"github.com/bolacha/docsync/internal/state"
-	"github.com/bolacha/docsync/internal/store"
-	"github.com/bolacha/docsync/internal/templates"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/runtime"
+	"github.com/repocompanion/companion/internal/state"
+	"github.com/repocompanion/companion/internal/store"
+	"github.com/repocompanion/companion/internal/templates"
 	"github.com/spf13/cobra"
 )
 
@@ -64,7 +64,7 @@ func (a *App) editCmd() *cobra.Command {
 			}
 			full := filepath.Join(c.Path, filepath.FromSlash(rel))
 			if _, err := os.Stat(full); err != nil {
-				return fmt.Errorf("%s is not in changeset %s; use `docsync new` first", rel, c.ID)
+				return fmt.Errorf("%s is not in changeset %s; use `companion new` first", rel, c.ID)
 			}
 			editor := os.Getenv("VISUAL")
 			if editor == "" {
@@ -83,7 +83,7 @@ func (a *App) editCmd() *cobra.Command {
 			if err := ecmd.Run(); err != nil {
 				return err
 			}
-			fmt.Printf("\nedited in changeset %s; run `docsync change sync` to commit, push and open the draft PR.\n", c.ID)
+			fmt.Printf("\nedited in changeset %s; run `companion change sync` to commit, push and open the draft PR.\n", c.ID)
 			return nil
 		},
 	}
@@ -145,7 +145,7 @@ func (a *App) moveCmd() *cobra.Command {
 				return a.printJSON(map[string]any{"changeset": c, "moved_from": oldRel, "moved_to": newRel})
 			}
 			fmt.Printf("moved %s -> %s in changeset %s\n", oldRel, newRel, c.ID)
-			fmt.Println("run `docsync change sync` to publish the rename.")
+			fmt.Println("run `companion change sync` to publish the rename.")
 			return nil
 		},
 	}
@@ -203,7 +203,7 @@ func (a *App) newCmd() *cobra.Command {
 				return fmt.Errorf("generated document is invalid: %s", problems[0].Message)
 			}
 			if s.Runtime.Store.ExistsPath(rel) {
-				return fmt.Errorf("%s already exists in main; use `docsync edit`", rel)
+				return fmt.Errorf("%s already exists in main; use `companion edit`", rel)
 			}
 			if changesetID == "" {
 				if _, err := s.Manager.EnsureNamed(context.Background(), area, title); err != nil {
@@ -219,7 +219,7 @@ func (a *App) newCmd() *cobra.Command {
 			}
 			fmt.Printf("created %s in changeset %s\n", rel, c.ID)
 			fmt.Printf("worktree: %s\n", c.Path)
-			fmt.Println("run `docsync change sync` to push and open the draft PR.")
+			fmt.Println("run `companion change sync` to push and open the draft PR.")
 			return nil
 		},
 	}

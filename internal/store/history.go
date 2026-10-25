@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 type Revision struct {
@@ -76,8 +76,8 @@ func (s *Store) Log(ctx context.Context, rel string, wip bool) ([]Revision, erro
 		if len(fields) > 5 {
 			for _, line := range strings.Split(fields[5], "\n") {
 				switch {
-				case strings.HasPrefix(line, "Docsync-Source:"):
-					rev.Source = strings.TrimSpace(strings.TrimPrefix(line, "Docsync-Source:"))
+				case strings.HasPrefix(line, "Companion-Source:"):
+					rev.Source = strings.TrimSpace(strings.TrimPrefix(line, "Companion-Source:"))
 				case strings.HasPrefix(line, "Reviewed-by:"):
 					rev.Reviewer = strings.TrimSpace(strings.TrimPrefix(line, "Reviewed-by:"))
 				}
@@ -147,7 +147,7 @@ func (s *Store) ReadPR(ctx context.Context, rel string, pr int) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	ref := "refs/docsync/pr/" + strconv.Itoa(pr)
+	ref := "refs/companion/pr/" + strconv.Itoa(pr)
 	spec := fmt.Sprintf("+refs/pull/%d/head:%s", pr, ref)
 	if _, err := s.git(ctx, "fetch", "origin", spec); err != nil {
 		return "", fmt.Errorf("fetch PR #%d: %w", pr, err)
@@ -198,7 +198,7 @@ func (s *Store) DiffPR(ctx context.Context, rel string, pr int) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	ref := "refs/docsync/pr/" + strconv.Itoa(pr)
+	ref := "refs/companion/pr/" + strconv.Itoa(pr)
 	spec := fmt.Sprintf("+refs/pull/%d/head:%s", pr, ref)
 	if _, err := s.git(ctx, "fetch", "origin", spec); err != nil {
 		return "", fmt.Errorf("fetch PR #%d: %w", pr, err)
@@ -244,8 +244,8 @@ func (s *Store) LogWIP(ctx context.Context, worktree, rel string) ([]Revision, e
 		rev := Revision{Commit: fields[0], Date: t, Author: fields[2], Email: fields[3], Subject: fields[4]}
 		if len(fields) > 5 {
 			for _, line := range strings.Split(fields[5], "\n") {
-				if strings.HasPrefix(line, "Docsync-Source:") {
-					rev.Source = strings.TrimSpace(strings.TrimPrefix(line, "Docsync-Source:"))
+				if strings.HasPrefix(line, "Companion-Source:") {
+					rev.Source = strings.TrimSpace(strings.TrimPrefix(line, "Companion-Source:"))
 				}
 			}
 		}

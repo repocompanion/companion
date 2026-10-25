@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/codeindex"
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/docrules"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/lint"
-	"github.com/bolacha/docsync/internal/mcpserver"
-	"github.com/bolacha/docsync/internal/state"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/codeindex"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/lint"
+	"github.com/repocompanion/companion/internal/mcpserver"
+	"github.com/repocompanion/companion/internal/state"
+	"github.com/repocompanion/companion/internal/store"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -172,7 +172,7 @@ func (a *App) configSetCmd() *cobra.Command {
 func (a *App) configInitRepoCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init-repo",
-		Short: "Write .docsync.yaml with detected values",
+		Short: "Write .companion.yaml with detected values",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := a.runtime()
 			if err != nil {
@@ -195,7 +195,7 @@ func (a *App) configInitRepoCmd() *cobra.Command {
 			if err := config.SaveRepo(root, repo); err != nil {
 				return err
 			}
-			fmt.Printf("wrote %s\n", filepath.Join(root, ".docsync.yaml"))
+			fmt.Printf("wrote %s\n", filepath.Join(root, ".companion.yaml"))
 			return nil
 		},
 	}
@@ -228,12 +228,12 @@ func (a *App) registryAddRepoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			area := ".docsync"
+			area := ".companion"
 			c, err := s.Manager.Ensure(context.Background(), area)
 			if err != nil {
 				return err
 			}
-			rel := ".docsync/registry.yaml"
+			rel := ".companion/registry.yaml"
 			reg, err := s.Manager.LoadRegistry(c)
 			if err != nil {
 				return err
@@ -312,7 +312,7 @@ func (a *App) doctorCmd() *cobra.Command {
 			add("git", okGit, gitVersion+" (need >= 2.30)")
 			add("store", rt.Store.Exists(), rt.Store.Bare)
 			add("remote", rt.Store.Remote != "" && !strings.Contains(rt.Store.Remote, "your-org"), rt.Store.Remote)
-			add("github token", rt.Forge != nil && rt.Forge.Available(), "DOCSYNC_FORGE_TOKEN, forge.token, or gh auth token")
+			add("github token", rt.Forge != nil && rt.Forge.Available(), "COMPANION_FORGE_TOKEN, forge.token, or gh auth token")
 			add("code provider go", true, codeindex.NewGoProvider().Version())
 			ctags := codeindex.NewCtagsProvider()
 			if ctags.Available {
@@ -325,7 +325,7 @@ func (a *App) doctorCmd() *cobra.Command {
 				rev, t, err := rt.Store.MirrorRev(context.Background())
 				add("main mirror", err == nil, fmt.Sprintf("%s %s", shortSHA(rev), humanAge(time.Since(t))))
 				dirty, _ := gitx.Run(context.Background(), rt.Store.Mirror, "status", "--porcelain")
-				add("mirror clean", strings.TrimSpace(dirty) == "", "if dirty: docsync change adopt")
+				add("mirror clean", strings.TrimSpace(dirty) == "", "if dirty: companion change adopt")
 				worktrees, _ := gitx.Run(context.Background(), "", "--git-dir", rt.Store.Bare, "worktree", "list", "--porcelain")
 				add("worktrees", worktrees != "", fmt.Sprintf("%d entries", strings.Count(worktrees, "worktree ")))
 				st, err := state.NewStore(rt.Store.StatePath).Load()

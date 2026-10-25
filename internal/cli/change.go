@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/runtime"
-	"github.com/bolacha/docsync/internal/state"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/runtime"
+	"github.com/repocompanion/companion/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -228,7 +228,7 @@ func (a *App) changeSubmitCmd() *cobra.Command {
 				return a.printJSON(res)
 			}
 			printResult(res)
-			fmt.Println("PR is ready for review; the changeset is frozen until `docsync change reopen`.")
+			fmt.Println("PR is ready for review; the changeset is frozen until `companion change reopen`.")
 			return nil
 		},
 	}
@@ -359,7 +359,7 @@ func (a *App) changeAdoptCmd() *cobra.Command {
 				return a.printJSON(c)
 			}
 			printChange(c)
-			fmt.Println("edits adopted and committed locally; run `docsync change sync` to push.")
+			fmt.Println("edits adopted and committed locally; run `companion change sync` to push.")
 			return nil
 		},
 	}

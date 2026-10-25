@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bolacha/docsync/internal/gitx"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 // rootFor returns the first usable MCP root for a session. Roots are

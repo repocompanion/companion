@@ -25,7 +25,7 @@ func testBundle() *Bundle {
 func TestRenderExports(t *testing.T) {
 	b := testBundle()
 	agents := RenderAgentsMD(b)
-	for _, want := range []string{ManagedBegin, ManagedEnd, "Acme API", "Snapshot generated", "Required documentation", "SQS consumer", "docsync cat"} {
+	for _, want := range []string{ManagedBegin, ManagedEnd, "Acme API", "Snapshot generated", "Required documentation", "SQS consumer", "companion cat"} {
 		if !strings.Contains(agents, want) {
 			t.Fatalf("agents-md missing %q:\n%s", want, agents)
 		}

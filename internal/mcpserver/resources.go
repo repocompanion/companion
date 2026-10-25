@@ -7,22 +7,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/templates"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/templates"
 )
 
 const (
-	docResourcePrefix      = "docsync://docs/"
-	templateResourcePrefix = "docsync://templates/"
+	docResourcePrefix      = "companion://docs/"
+	templateResourcePrefix = "companion://templates/"
 )
 
 func registerResources(s *mcp.Server, p *provider) {
 	s.AddResourceTemplate(&mcp.ResourceTemplate{
-		URITemplate: "docsync://docs/{+path}",
-		Name:        "docsync-docs",
-		Title:       "docsync documents",
-		Description: "Read a document from the docsync store; path is project-relative or store-relative.",
+		URITemplate: "companion://docs/{+path}",
+		Name:        "companion-docs",
+		Title:       "companion documents",
+		Description: "Read a document from the companion store; path is project-relative or store-relative.",
 		MIMEType:    "text/markdown",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		uri := req.Params.URI
@@ -62,9 +62,9 @@ func registerResources(s *mcp.Server, p *provider) {
 	})
 
 	s.AddResourceTemplate(&mcp.ResourceTemplate{
-		URITemplate: "docsync://templates/{kind}",
-		Name:        "docsync-templates",
-		Title:       "docsync templates",
+		URITemplate: "companion://templates/{kind}",
+		Name:        "companion-templates",
+		Title:       "companion templates",
 		Description: "Read a canonical document skeleton: adr, pattern, flow, runbook, standard, readme or architecture.",
 		MIMEType:    "text/markdown",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {

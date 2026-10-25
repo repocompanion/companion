@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func TestToolsAgainstLocalStore(t *testing.T) {
@@ -91,8 +91,8 @@ last_reviewed: 2026-01-01
 	if err := os.WriteFile(cfgPath, []byte("remote: "+remote+"\nforge:\n  type: github\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("DOCSYNC_HOME", home)
-	t.Setenv("DOCSYNC_CONFIG", cfgPath)
+	t.Setenv("COMPANION_HOME", home)
+	t.Setenv("COMPANION_CONFIG", cfgPath)
 	t.Setenv("USER", "tester")
 	t.Setenv("GIT_AUTHOR_NAME", "Tester")
 	t.Setenv("GIT_AUTHOR_EMAIL", "tester@example.com")
@@ -243,11 +243,11 @@ last_reviewed: 2026-01-01
 	if err != nil || len(resources.ResourceTemplates) < 2 {
 		t.Fatalf("resource templates = %+v, err=%v", resources, err)
 	}
-	docResource, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "docsync://docs/projects/acme/api/README.md"})
+	docResource, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "companion://docs/projects/acme/api/README.md"})
 	if err != nil || len(docResource.Contents) == 0 || !strings.Contains(docResource.Contents[0].Text, "Acme API") {
 		t.Fatalf("document resource = %+v, err=%v", docResource, err)
 	}
-	tmplResource, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "docsync://templates/flow"})
+	tmplResource, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "companion://templates/flow"})
 	if err != nil || len(tmplResource.Contents) == 0 || !strings.Contains(tmplResource.Contents[0].Text, "## Trigger") {
 		t.Fatalf("template resource = %+v, err=%v", tmplResource, err)
 	}

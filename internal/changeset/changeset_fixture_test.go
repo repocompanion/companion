@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/forge"
-	"github.com/bolacha/docsync/internal/state"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/forge"
+	"github.com/repocompanion/companion/internal/state"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 // newChangesetFixture creates a local bare store, a mirrored main branch and an

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 type Validator struct {

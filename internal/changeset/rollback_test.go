@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/state"
+	"github.com/repocompanion/companion/internal/state"
 )
 
 const secretLeak = "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"

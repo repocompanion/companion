@@ -1,5 +1,5 @@
 // Package templates contains the human-facing document skeletons used by
-// `docsync new`, `docsync adr new` and the MCP scaffolding tools.
+// `companion new`, `companion adr new` and the MCP scaffolding tools.
 package templates
 
 import (

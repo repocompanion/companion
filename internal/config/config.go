@@ -1,6 +1,6 @@
-// Package config implements docsync's layered configuration and context
+// Package config implements companion's layered configuration and context
 // resolution. Every resolved value carries the layer it came from so that
-// `docsync context` can explain surprising answers.
+// `companion context` can explain surprising answers.
 package config
 
 import (
@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bolacha/docsync/internal/docrules"
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/gitx"
 	"gopkg.in/yaml.v3"
 )
 
@@ -47,7 +47,7 @@ type MCPConfig struct {
 	MaxFileSize int64  `yaml:"max_file_size,omitempty" json:"max_file_size,omitempty"`
 }
 
-// UserConfig is the personal config at ~/.config/docsync/config.yaml.
+// UserConfig is the personal config at ~/.config/companion/config.yaml.
 type UserConfig struct {
 	Remote     string          `yaml:"remote,omitempty" json:"remote,omitempty"`
 	Forge      ForgeConfig     `yaml:"forge,omitempty" json:"forge,omitempty"`
@@ -63,7 +63,7 @@ type UserConfig struct {
 	Languages []string `yaml:"languages,omitempty" json:"languages,omitempty"`
 }
 
-// RepoConfig is the committed .docsync.yaml in a code repository.
+// RepoConfig is the committed .companion.yaml in a code repository.
 type RepoConfig struct {
 	Project   string     `yaml:"project,omitempty" json:"project,omitempty"`
 	Team      string     `yaml:"team,omitempty" json:"team,omitempty"`
@@ -87,7 +87,7 @@ type RepoMapping struct {
 	Domain string `yaml:"domain,omitempty" json:"domain,omitempty"`
 }
 
-// Registry is the org-wide mapping file in docs-store/.docsync/registry.yaml.
+// Registry is the org-wide mapping file in docs-store/.companion/registry.yaml.
 type Registry struct {
 	Teams     map[string]Team        `yaml:"teams,omitempty" json:"teams,omitempty"`
 	Repos     map[string]RepoMapping `yaml:"repos,omitempty" json:"repos,omitempty"`
@@ -145,36 +145,36 @@ func (c *Context) BranchUser() string {
 	return "user"
 }
 
-// Home returns the docsync state directory.
+// Home returns the companion state directory.
 func Home() (string, error) {
-	if v := strings.TrimSpace(os.Getenv("DOCSYNC_HOME")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("COMPANION_HOME")); v != "" {
 		return filepath.Abs(v)
 	}
 	h, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(h, ".docsync"), nil
+	return filepath.Join(h, ".companion"), nil
 }
 
 // UserConfigPath returns the per-user config path.
 func UserConfigPath() (string, error) {
-	if v := strings.TrimSpace(os.Getenv("DOCSYNC_CONFIG")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("COMPANION_CONFIG")); v != "" {
 		return filepath.Abs(v)
 	}
 	if runtime.GOOS == "windows" {
 		if dir := os.Getenv("APPDATA"); dir != "" {
-			return filepath.Join(dir, "docsync", "config.yaml"), nil
+			return filepath.Join(dir, "companion", "config.yaml"), nil
 		}
 	}
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "docsync", "config.yaml"), nil
+		return filepath.Join(dir, "companion", "config.yaml"), nil
 	}
 	h, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(h, ".config", "docsync", "config.yaml"), nil
+	return filepath.Join(h, ".config", "companion", "config.yaml"), nil
 }
 
 func normalizeUserConfig(c *UserConfig) {
@@ -215,7 +215,7 @@ func LoadUser() (UserConfig, error) {
 		}
 	}
 	normalizeUserConfig(&c)
-	if v := strings.TrimSpace(os.Getenv("DOCSYNC_REMOTE")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("COMPANION_REMOTE")); v != "" {
 		c.Remote = v
 	}
 	return c, nil
@@ -238,13 +238,13 @@ func SaveUser(c UserConfig) error {
 	return atomicWrite(p, b, 0o600)
 }
 
-// LoadRepo loads .docsync.yaml from a code repository root.
+// LoadRepo loads .companion.yaml from a code repository root.
 func LoadRepo(root string) (RepoConfig, error) {
 	var c RepoConfig
 	if root == "" {
 		return c, nil
 	}
-	b, err := os.ReadFile(filepath.Join(root, ".docsync.yaml"))
+	b, err := os.ReadFile(filepath.Join(root, ".companion.yaml"))
 	if errors.Is(err, os.ErrNotExist) {
 		return c, nil
 	}
@@ -252,7 +252,7 @@ func LoadRepo(root string) (RepoConfig, error) {
 		return c, err
 	}
 	if err := yaml.Unmarshal(b, &c); err != nil {
-		return c, fmt.Errorf("parse .docsync.yaml: %w", err)
+		return c, fmt.Errorf("parse .companion.yaml: %w", err)
 	}
 	return c, nil
 }
@@ -265,7 +265,7 @@ func SaveRepo(root string, c RepoConfig) error {
 	if err != nil {
 		return err
 	}
-	return atomicWrite(filepath.Join(root, ".docsync.yaml"), b, 0o644)
+	return atomicWrite(filepath.Join(root, ".companion.yaml"), b, 0o644)
 }
 
 func LoadRegistry(storeRoot string) (Registry, error) {
@@ -273,7 +273,7 @@ func LoadRegistry(storeRoot string) (Registry, error) {
 	if storeRoot == "" {
 		return r, nil
 	}
-	p := filepath.Join(storeRoot, ".docsync", "registry.yaml")
+	p := filepath.Join(storeRoot, ".companion", "registry.yaml")
 	b, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return r, nil
@@ -288,7 +288,7 @@ func LoadRegistry(storeRoot string) (Registry, error) {
 }
 
 func atomicWrite(p string, b []byte, perm os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(p), ".docsync-tmp-")
+	tmp, err := os.CreateTemp(filepath.Dir(p), ".companion-tmp-")
 	if err != nil {
 		return err
 	}
@@ -333,8 +333,8 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	switch {
 	case strings.TrimSpace(in.User.User.Name) != "":
 		c.UserName, c.Sources["user"] = in.User.User.Name, "user config"
-	case strings.TrimSpace(in.Env["DOCSYNC_USER_NAME"]) != "":
-		c.UserName, c.Sources["user"] = in.Env["DOCSYNC_USER_NAME"], "environment"
+	case strings.TrimSpace(in.Env["COMPANION_USER_NAME"]) != "":
+		c.UserName, c.Sources["user"] = in.Env["COMPANION_USER_NAME"], "environment"
 	case d.Name != "":
 		c.UserName, c.Sources["user"] = d.Name, "git config"
 	case strings.TrimSpace(in.Env["USER"]) != "":
@@ -345,8 +345,8 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	switch {
 	case strings.TrimSpace(in.User.User.Email) != "":
 		c.UserEmail, c.Sources["email"] = in.User.User.Email, "user config"
-	case strings.TrimSpace(in.Env["DOCSYNC_USER_EMAIL"]) != "":
-		c.UserEmail, c.Sources["email"] = in.Env["DOCSYNC_USER_EMAIL"], "environment"
+	case strings.TrimSpace(in.Env["COMPANION_USER_EMAIL"]) != "":
+		c.UserEmail, c.Sources["email"] = in.Env["COMPANION_USER_EMAIL"], "environment"
 	case d.Email != "":
 		c.UserEmail, c.Sources["email"] = d.Email, "git config"
 	}
@@ -368,8 +368,8 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	// Project: flag -> env -> repo config -> user config -> alias -> normalized remote -> local/<dir>.
 	c.Project, c.Sources["project"] = firstNonEmpty(
 		val(in.Flags.Project, "flag"),
-		val(in.Env["DOCSYNC_PROJECT"], "environment"),
-		val(in.Repo.Project, ".docsync.yaml"),
+		val(in.Env["COMPANION_PROJECT"], "environment"),
+		val(in.Repo.Project, ".companion.yaml"),
 		val(in.User.Project, "user config"),
 	)
 	if c.Project == "" && d.Project != "" {
@@ -381,7 +381,7 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	}
 	if c.Project == "" && d.Root != "" {
 		c.Project, c.Sources["project"] = "local/"+gitx.Slug(gitx.RepoName(d.Root)), "local path (weak)"
-		c.Warnings = append(c.Warnings, "project was inferred from the directory name; set project in .docsync.yaml for stable docs")
+		c.Warnings = append(c.Warnings, "project was inferred from the directory name; set project in .companion.yaml for stable docs")
 	}
 	if c.Project == "" {
 		c.Unresolved = append(c.Unresolved, "project")
@@ -396,8 +396,8 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	// store CODEOWNERS -> user default.
 	c.Team, c.Sources["team"] = firstNonEmpty(
 		val(in.Flags.Team, "flag"),
-		val(in.Env["DOCSYNC_TEAM"], "environment"),
-		val(in.Repo.Team, ".docsync.yaml"),
+		val(in.Env["COMPANION_TEAM"], "environment"),
+		val(in.Repo.Team, ".companion.yaml"),
 		val(in.User.Team, "user config"),
 	)
 	if c.Team == "" && hasMapping && mapping.Team != "" {
@@ -423,8 +423,8 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	// Domain.
 	c.Domain, c.Sources["domain"] = firstNonEmpty(
 		val(in.Flags.Domain, "flag"),
-		val(in.Env["DOCSYNC_DOMAIN"], "environment"),
-		val(in.Repo.Domain, ".docsync.yaml"),
+		val(in.Env["COMPANION_DOMAIN"], "environment"),
+		val(in.Repo.Domain, ".companion.yaml"),
 		val(in.User.Domain, "user config"),
 		val(mapping.Domain, "registry repos mapping"),
 	)
@@ -432,10 +432,10 @@ func Resolve(ctx context.Context, in ResolveInput) *Context {
 	// Languages: flag -> env -> repo -> user -> manifests -> registry defaults.
 	if len(in.Flags.Languages) > 0 {
 		c.Languages, c.Sources["languages"] = cleanLanguages(in.Flags.Languages), "flag"
-	} else if v := splitCSV(in.Env["DOCSYNC_LANGUAGES"]); len(v) > 0 {
+	} else if v := splitCSV(in.Env["COMPANION_LANGUAGES"]); len(v) > 0 {
 		c.Languages, c.Sources["languages"] = cleanLanguages(v), "environment"
 	} else if len(in.Repo.Languages) > 0 {
-		c.Languages, c.Sources["languages"] = cleanLanguages(in.Repo.Languages), ".docsync.yaml"
+		c.Languages, c.Sources["languages"] = cleanLanguages(in.Repo.Languages), ".companion.yaml"
 	} else if len(in.User.Languages) > 0 {
 		c.Languages, c.Sources["languages"] = cleanLanguages(in.User.Languages), "user config"
 	}
@@ -536,8 +536,8 @@ func sanitizeMachine(s string) string {
 func envMap() map[string]string {
 	m := map[string]string{}
 	for _, k := range []string{
-		"DOCSYNC_PROJECT", "DOCSYNC_TEAM", "DOCSYNC_DOMAIN", "DOCSYNC_LANGUAGES",
-		"DOCSYNC_REMOTE", "DOCSYNC_USER_NAME", "DOCSYNC_USER_EMAIL",
+		"COMPANION_PROJECT", "COMPANION_TEAM", "COMPANION_DOMAIN", "COMPANION_LANGUAGES",
+		"COMPANION_REMOTE", "COMPANION_USER_NAME", "COMPANION_USER_EMAIL",
 		"USER", "USERNAME",
 	} {
 		if v := os.Getenv(k); v != "" {

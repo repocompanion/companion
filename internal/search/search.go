@@ -1,5 +1,5 @@
 // Package search implements a small, dependency-free BM25 index over the
-// documents visible to docsync. It is intentionally in-memory: the active
+// documents visible to companion. It is intentionally in-memory: the active
 // changeset overlay is cheap to materialize, and no SQLite cache is needed yet.
 package search
 
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 const (

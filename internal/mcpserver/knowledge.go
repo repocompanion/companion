@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/docrules"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/runtime"
-	"github.com/bolacha/docsync/internal/state"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/runtime"
+	"github.com/repocompanion/companion/internal/state"
 	"gopkg.in/yaml.v3"
 )
 
@@ -250,7 +250,7 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "docs_set_context",
-		Description: "Set user or repo context. registry scope opens a docsync PR against the org registry.",
+		Description: "Set user or repo context. registry scope opens a companion PR against the org registry.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in setContextIn) (*mcp.CallToolResult, any, error) {
 		sess, err := p.session(ctx, req, in.Project)
 		if err != nil {
@@ -284,7 +284,7 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 			if err := config.SaveRepo(root, repo); err != nil {
 				return errorResult(err)
 			}
-			return textResult(map[string]any{"ok": true, "scope": "repo", "path": path.Join(root, ".docsync.yaml"), "note": "commit this through the code repo's normal PR flow"})
+			return textResult(map[string]any{"ok": true, "scope": "repo", "path": path.Join(root, ".companion.yaml"), "note": "commit this through the code repo's normal PR flow"})
 		case "registry":
 			return setRegistry(ctx, sess, in.Project, in.Field, in.Value)
 		default:
@@ -465,12 +465,12 @@ func setRegistry(ctx context.Context, sess *runtime.Session, project, field, val
 	if sess.Runtime.Cfg.MCP.OrgWrite == "disabled" {
 		return errorResult(errors.New("registry writes are disabled by mcp.org_write"))
 	}
-	area := ".docsync"
+	area := ".companion"
 	c, err := sess.Manager.Ensure(ctx, area)
 	if err != nil {
 		return errorResult(err)
 	}
-	rel := ".docsync/registry.yaml"
+	rel := ".companion/registry.yaml"
 	reg, err := sess.Manager.LoadRegistry(c)
 	if err != nil {
 		return errorResult(err)

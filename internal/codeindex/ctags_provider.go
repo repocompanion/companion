@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 const ctagsIndexVersion = "universal-ctags-v2"
@@ -93,7 +93,7 @@ func (p *CtagsProvider) Index(ctx context.Context, req IndexRequest) (*Snapshot,
 	args := []string{
 		"--output-format=json", "--fields=+nKSt", "--extras=+q",
 		"--exclude=.git", "--exclude=node_modules", "--exclude=vendor",
-		"--exclude=dist", "--exclude=build", "--exclude=.docsync",
+		"--exclude=dist", "--exclude=build", "--exclude=.companion",
 		"-R", ".",
 	}
 	cmd := exec.CommandContext(ctx, p.Binary, args...)

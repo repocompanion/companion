@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bolacha/docsync/internal/gitx"
+	"github.com/repocompanion/companion/internal/gitx"
 )
 
 // checkoutAt returns a checkout of commit. The current checkout is reused when
@@ -27,7 +27,7 @@ func checkoutAt(ctx context.Context, root, commit string) (string, func(), error
 	if resolved == head {
 		return root, noop, nil
 	}
-	dir, err := os.MkdirTemp("", "docsync-checkout-")
+	dir, err := os.MkdirTemp("", "companion-checkout-")
 	if err != nil {
 		return "", noop, err
 	}

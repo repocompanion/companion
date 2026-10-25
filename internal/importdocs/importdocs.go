@@ -1,5 +1,5 @@
 // Package importdocs scans legacy Markdown trees and proposes canonical
-// docsync destinations. It never writes to the store; the CLI decides whether
+// companion destinations. It never writes to the store; the CLI decides whether
 // to apply a report.
 package importdocs
 
@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/docrules"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/store"
 	"gopkg.in/yaml.v3"
 )
 
@@ -87,7 +87,7 @@ func Scan(source, area string, opts Options) (*Report, error) {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if name == ".git" || name == ".docsync" || name == ".github" || name == "node_modules" {
+			if name == ".git" || name == ".companion" || name == ".github" || name == "node_modules" {
 				return filepath.SkipDir
 			}
 			return nil

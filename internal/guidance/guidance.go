@@ -8,10 +8,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/bolacha/docsync/internal/codeindex"
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/search"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/codeindex"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/search"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 type Result struct {

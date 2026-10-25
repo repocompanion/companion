@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/state"
+	"github.com/repocompanion/companion/internal/state"
 )
 
 func TestReconcileStateRebuildsMissingState(t *testing.T) {

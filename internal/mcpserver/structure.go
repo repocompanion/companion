@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/bolacha/docsync/internal/docrules"
+	"github.com/repocompanion/companion/internal/docrules"
 )
 
 // The canonical project structure is deliberately enforced for MCP writes.

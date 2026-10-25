@@ -6,12 +6,12 @@ import (
 	"path"
 	"strings"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/guidance"
-	"github.com/bolacha/docsync/internal/runtime"
-	"github.com/bolacha/docsync/internal/search"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/guidance"
+	"github.com/repocompanion/companion/internal/runtime"
+	"github.com/repocompanion/companion/internal/search"
+	"github.com/repocompanion/companion/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -355,7 +355,7 @@ func resolveDoc(s *runtime.Session, arg string) (string, error) {
 	if arg == "" {
 		return "", fmt.Errorf("document path is required")
 	}
-	if strings.HasPrefix(arg, "org/") || strings.HasPrefix(arg, "teams/") || strings.HasPrefix(arg, "projects/") || strings.HasPrefix(arg, ".docsync/") {
+	if strings.HasPrefix(arg, "org/") || strings.HasPrefix(arg, "teams/") || strings.HasPrefix(arg, "projects/") || strings.HasPrefix(arg, ".companion/") {
 		return store.CleanRel(arg)
 	}
 	if area == "" {

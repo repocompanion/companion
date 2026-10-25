@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/docrules"
-	"github.com/bolacha/docsync/internal/runtime"
-	"github.com/bolacha/docsync/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/runtime"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func registerChangeTools(s *mcp.Server, p *provider) {
@@ -302,7 +302,7 @@ func registerChangeTools(s *mcp.Server, p *provider) {
 				return jsonErrorResult(map[string]any{
 					"ok": false, "error": "lint_failed", "issues": lintErr.Result.Issues,
 					"docs":   lintErr.Result.Docs,
-					"hint":   "fix the errors, or a human can run `docsync change submit --skip-lint`",
+					"hint":   "fix the errors, or a human can run `companion change submit --skip-lint`",
 					"result": res,
 				})
 			}
@@ -412,7 +412,7 @@ func agentArea(s *runtime.Session, area, p string) (string, error) {
 		return area, nil
 	}
 	p = strings.ReplaceAll(strings.TrimSpace(p), "\\", "/")
-	if strings.HasPrefix(p, "org/") || strings.HasPrefix(p, "teams/") || strings.HasPrefix(p, "projects/") || strings.HasPrefix(p, ".docsync/") {
+	if strings.HasPrefix(p, "org/") || strings.HasPrefix(p, "teams/") || strings.HasPrefix(p, "projects/") || strings.HasPrefix(p, ".companion/") {
 		return changeset.AreaForPath(p)
 	}
 	if s.Context.ProjectArea() == "" {
@@ -424,7 +424,7 @@ func agentArea(s *runtime.Session, area, p string) (string, error) {
 func agentWritable(area string) bool {
 	return !(area == "org" || strings.HasPrefix(area, "org/") ||
 		area == "teams" || strings.HasPrefix(area, "teams/") ||
-		area == ".docsync" || strings.HasPrefix(area, ".docsync/"))
+		area == ".companion" || strings.HasPrefix(area, ".companion/"))
 }
 
 func validAgentWritePath(p string) error {

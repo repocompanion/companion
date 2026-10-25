@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func TestCtagsProviderIndexAndResolve(t *testing.T) {

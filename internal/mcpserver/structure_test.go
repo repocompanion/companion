@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/lint"
+	"github.com/repocompanion/companion/internal/lint"
 )
 
 func TestAgentValidationMatchesLint(t *testing.T) {

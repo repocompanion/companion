@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func TestOverlayIncludesUncommittedChanges(t *testing.T) {

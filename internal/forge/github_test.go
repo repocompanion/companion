@@ -10,7 +10,7 @@ func TestManagedBodyPreservesHumanText(t *testing.T) {
 	if !strings.Contains(body, "Please review this.") {
 		t.Fatal("human text lost")
 	}
-	if !strings.Contains(body, "Docsync-Area: org/patterns") {
+	if !strings.Contains(body, "Companion-Area: org/patterns") {
 		t.Fatal("managed area missing")
 	}
 	updated := ManagedBody(body, "cs-1", "org/patterns", []string{"org/patterns/b.md"})
@@ -23,8 +23,8 @@ func TestManagedBodyPreservesHumanText(t *testing.T) {
 	if !strings.Contains(updated, "org/patterns/b.md") || strings.Contains(updated, "org/patterns/a.md") {
 		t.Fatalf("managed file list not replaced: %s", updated)
 	}
-	withTrailer := ManagedBody(updated, "cs-1", "org/patterns", []string{"org/patterns/b.md"}, "Docsync-Source: agent:mcp")
-	if !strings.Contains(withTrailer, "Docsync-Source: agent:mcp") {
+	withTrailer := ManagedBody(updated, "cs-1", "org/patterns", []string{"org/patterns/b.md"}, "Companion-Source: agent:mcp")
+	if !strings.Contains(withTrailer, "Companion-Source: agent:mcp") {
 		t.Fatalf("trailer missing: %s", withTrailer)
 	}
 }

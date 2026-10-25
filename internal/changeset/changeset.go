@@ -13,20 +13,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/codeindex"
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/docrules"
-	"github.com/bolacha/docsync/internal/forge"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/lint"
-	"github.com/bolacha/docsync/internal/state"
-	"github.com/bolacha/docsync/internal/store"
 	"github.com/gofrs/flock"
+	"github.com/repocompanion/companion/internal/codeindex"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/docrules"
+	"github.com/repocompanion/companion/internal/forge"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/lint"
+	"github.com/repocompanion/companion/internal/state"
+	"github.com/repocompanion/companion/internal/store"
 	"gopkg.in/yaml.v3"
 )
 
 var (
-	ErrFrozen          = errors.New("changeset is ready for review and frozen; run `docsync change reopen` first")
+	ErrFrozen          = errors.New("changeset is ready for review and frozen; run `companion change reopen` first")
 	ErrBaseRevRequired = errors.New("base_rev is required when modifying an existing file")
 	ErrNoChangeset     = errors.New("no active changeset")
 )
@@ -59,7 +59,7 @@ func (e *JoinRequiredError) Error() string {
 	for _, p := range e.PRs {
 		nums = append(nums, fmt.Sprintf("#%d (%s, %s)", p.Number, p.Title, p.User))
 	}
-	return fmt.Sprintf("an open shared PR exists for %s: %s; join it with `docsync change join <PR#>` and then write again", e.Area, strings.Join(nums, ", "))
+	return fmt.Sprintf("an open shared PR exists for %s: %s; join it with `companion change join <PR#>` and then write again", e.Area, strings.Join(nums, ", "))
 }
 
 type Manager struct {
@@ -407,7 +407,7 @@ func (m *Manager) ReadFileState(ctx context.Context, area, rel string) (content,
 // it exists, falling back to the main mirror. A malformed file is returned as
 // an error so callers never silently replace it with a partial registry.
 func (m *Manager) LoadRegistry(c state.Change) (config.Registry, error) {
-	const rel = ".docsync/registry.yaml"
+	const rel = ".companion/registry.yaml"
 	raw, err := m.readWorktreeOrMain(c, rel)
 	if err != nil {
 		return config.Registry{}, err
@@ -834,7 +834,7 @@ func (m *Manager) refreshPR(ctx context.Context, c *state.Change) error {
 
 // Resolve finds a changeset by ID or, when the argument is empty, by the
 // active area. An empty argument with multiple active changesets is an error;
-// docsync must not guess.
+// companion must not guess.
 func (m *Manager) Resolve(idOrArea string) (state.Change, error) {
 	f, err := m.load()
 	if err != nil {
@@ -1233,7 +1233,7 @@ func (m *Manager) Join(ctx context.Context, number int) (state.Change, error) {
 		area = m.Ctx.ProjectArea()
 	}
 	if area == "" {
-		return state.Change{}, fmt.Errorf("cannot determine the area for PR #%d; add a Docsync-Area line to its body or pass a project", number)
+		return state.Change{}, fmt.Errorf("cannot determine the area for PR #%d; add a Companion-Area line to its body or pass a project", number)
 	}
 	if err := ValidateArea(area); err != nil {
 		return state.Change{}, err
@@ -1457,7 +1457,7 @@ func (m *Manager) commitIfNeeded(ctx context.Context, c state.Change, source str
 	if short == "" || short == "." {
 		short = c.Area
 	}
-	msg := fmt.Sprintf("docs(%s): %s\n\nDocsync-Source: %s\nDocsync-Machine: %s", short, c.Title, source, machine(m.Ctx))
+	msg := fmt.Sprintf("docs(%s): %s\n\nCompanion-Source: %s\nCompanion-Machine: %s", short, c.Title, source, machine(m.Ctx))
 	if _, err := m.wt(ctx, c, "commit", "-m", msg); err != nil {
 		return false, fmt.Errorf("commit: %w", err)
 	}
@@ -1517,7 +1517,7 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 	}
 	var err error
 	if !c.IsOpen() {
-		return Result{}, fmt.Errorf("changeset %s is %s; run `docsync change cleanup`", c.ID, c.PRState)
+		return Result{}, fmt.Errorf("changeset %s is %s; run `companion change cleanup`", c.ID, c.PRState)
 	}
 	if c.IsReady() {
 		return Result{}, ErrFrozen
@@ -1554,7 +1554,7 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 			c.Frozen = pr.StateName() == "ready"
 			if pr.State != "open" {
 				_ = m.save(c)
-				return res, fmt.Errorf("PR #%d is %s; run `docsync change cleanup`", pr.Number, pr.StateName())
+				return res, fmt.Errorf("PR #%d is %s; run `companion change cleanup`", pr.Number, pr.StateName())
 			}
 			if c.IsReady() {
 				_ = m.save(c)
@@ -1578,7 +1578,7 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 			c.Error = "needs-rebase: remote branch and local work conflict"
 			c.NeedsSync = true
 			_ = m.save(c)
-			return res, fmt.Errorf("rebase conflict with origin/%s; resolve with `docsync change rebase`", c.Branch)
+			return res, fmt.Errorf("rebase conflict with origin/%s; resolve with `companion change rebase`", c.Branch)
 		}
 	}
 	remoteExists := true
@@ -1623,7 +1623,7 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 		res.Change, res.Pending = c, true
 		return res, &PendingError{Op: "refresh PR after push", Err: prErr}
 	}
-	body := forge.ManagedBody("", c.ID, c.Area, res.Files, "Docsync-Source: "+source, "Docsync-Machine: "+machine(m.Ctx))
+	body := forge.ManagedBody("", c.ID, c.Area, res.Files, "Companion-Source: "+source, "Companion-Machine: "+machine(m.Ctx))
 	if pr == nil {
 		title := fmt.Sprintf("docs(%s): %s", path.Base(c.Area), c.Title)
 		pr, err = m.Forge.CreateDraft(ctx, title, c.Branch, "main", body)
@@ -1646,7 +1646,7 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 			_ = m.save(c)
 			return res, ErrFrozen
 		}
-		body = forge.ManagedBody(pr.Body, c.ID, c.Area, res.Files, "Docsync-Source: "+source, "Docsync-Machine: "+machine(m.Ctx))
+		body = forge.ManagedBody(pr.Body, c.ID, c.Area, res.Files, "Companion-Source: "+source, "Companion-Machine: "+machine(m.Ctx))
 		if _, err := m.Forge.Update(ctx, pr.Number, pr.Title, body); err != nil {
 			res.Warning = "PR body update failed: " + err.Error()
 		}
@@ -1736,8 +1736,8 @@ func (m *Manager) SubmitWithOptions(ctx context.Context, idOrArea, summary, sour
 		title = fmt.Sprintf("docs(%s): %s", path.Base(c.Area), summary)
 	}
 	body := forge.ManagedBody(pr.Body, c.ID, c.Area, res.Files,
-		"Docsync-Source: "+source,
-		"Docsync-Machine: "+machine(m.Ctx),
+		"Companion-Source: "+source,
+		"Companion-Machine: "+machine(m.Ctx),
 	)
 	if _, err := m.Forge.Update(ctx, c.PR, title, body); err != nil {
 		return res, err
@@ -2000,7 +2000,7 @@ func (m *Manager) prHeadRef(ctx context.Context, pr int) (string, error) {
 	if pr <= 0 {
 		return "", fmt.Errorf("invalid PR number")
 	}
-	ref := fmt.Sprintf("refs/docsync/pr/%d", pr)
+	ref := fmt.Sprintf("refs/companion/pr/%d", pr)
 	spec := fmt.Sprintf("+refs/pull/%d/head:%s", pr, ref)
 	if _, err := m.git(ctx, "fetch", "origin", spec); err != nil {
 		return "", err

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/state"
+	"github.com/repocompanion/companion/internal/state"
 )
 
 const legacyDoc = "---\nid: legacy\nkind: flow\ntitle: Legacy\nstatus: approved\nowners: [payments]\nlast_reviewed: 2026-01-01\n---\n# Legacy\n"

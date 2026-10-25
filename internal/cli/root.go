@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolacha/docsync/internal/changeset"
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/forge"
-	"github.com/bolacha/docsync/internal/gitx"
-	"github.com/bolacha/docsync/internal/runtime"
-	"github.com/bolacha/docsync/internal/state"
+	"github.com/repocompanion/companion/internal/changeset"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/forge"
+	"github.com/repocompanion/companion/internal/gitx"
+	"github.com/repocompanion/companion/internal/runtime"
+	"github.com/repocompanion/companion/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -35,18 +35,18 @@ type App struct {
 func NewRootCommand() *cobra.Command {
 	a := &App{}
 	root := &cobra.Command{
-		Use:           "docsync",
+		Use:           "companion",
 		Version:       Version,
 		Short:         "Git-backed project docs for humans and coding agents",
-		Long:          "docsync keeps project documentation in one central Git repository. Every change goes through a changeset and a GitHub PR.",
+		Long:          "Repo Companion keeps project documentation in one central Git repository. Every change goes through a changeset and a GitHub PR.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if a.Home != "" {
-				_ = os.Setenv("DOCSYNC_HOME", a.Home)
+				_ = os.Setenv("COMPANION_HOME", a.Home)
 			}
 			if a.Config != "" {
-				_ = os.Setenv("DOCSYNC_CONFIG", a.Config)
+				_ = os.Setenv("COMPANION_CONFIG", a.Config)
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -56,7 +56,7 @@ func NewRootCommand() *cobra.Command {
 			return nil
 		},
 	}
-	root.PersistentFlags().StringVar(&a.Home, "home", "", "docsync state directory (default ~/.docsync)")
+	root.PersistentFlags().StringVar(&a.Home, "home", "", "companion state directory (default ~/.companion)")
 	root.PersistentFlags().StringVar(&a.Config, "config", "", "user config file")
 	root.PersistentFlags().StringVar(&a.Project, "project", "", "override project (owner/repo)")
 	root.PersistentFlags().StringVar(&a.Team, "team", "", "override team")
@@ -123,7 +123,7 @@ func (a *App) requireStore() error {
 		return err
 	}
 	if !rt.Store.Exists() {
-		return fmt.Errorf("docsync store is not initialized; run `docsync init --remote <git@github.com:org/docs-store.git>`")
+		return fmt.Errorf("companion store is not initialized; run `companion init --remote <git@github.com:org/docs-store.git>`")
 	}
 	return nil
 }
@@ -169,7 +169,7 @@ func (a *App) initCmd() *cobra.Command {
 				remote = config.DefaultRemote
 			}
 			if strings.Contains(remote, "your-org/docs-store") {
-				return fmt.Errorf("set the real store remote: docsync init --remote git@github.com:<org>/docs-store.git")
+				return fmt.Errorf("set the real store remote: companion init --remote git@github.com:<org>/docs-store.git")
 			}
 			rt.Store.Remote = remote
 			if err := rt.Store.Init(context.Background()); err != nil {
@@ -207,7 +207,7 @@ func checkInitAuth(rt *runtime.Runtime, remote string) {
 		fmt.Println("ssh:    ok")
 	}
 	if rt.Forge == nil || !rt.Forge.Available() {
-		fmt.Fprintln(os.Stderr, "warning: GitHub token unavailable; set DOCSYNC_FORGE_TOKEN, configure forge.token, or run `gh auth login`")
+		fmt.Fprintln(os.Stderr, "warning: GitHub token unavailable; set COMPANION_FORGE_TOKEN, configure forge.token, or run `gh auth login`")
 		return
 	}
 	if _, err := rt.Forge.CurrentLogin(ctx); err != nil {
@@ -220,11 +220,11 @@ func checkInitAuth(rt *runtime.Runtime, remote string) {
 const snippet = `## Documentation
 
 Before implementing infrastructure, integration or cross-cutting code (queues,
-databases, migrations, observability, APIs, auth), call the docsync
+databases, migrations, observability, APIs, auth), call the companion
 ` + "`docs_get_guidance`" + ` MCP tool. Before writing or refining documentation, call
 ` + "`docs_get_context`" + `. If the mirror is stale, call ` + "`docs_pull`" + `.
 
-Never write docs into the code repo. All doc changes go through docsync tools
+Never write docs into the code repo. All doc changes go through companion tools
 and become PRs.`
 
 func (a *App) pullCmd() *cobra.Command {
@@ -256,7 +256,7 @@ func (a *App) pullCmd() *cobra.Command {
 			}
 			fmt.Printf("main is at %s (%s)\n", shortSHA(rev), humanAge(time.Since(t)))
 			for _, id := range behind {
-				fmt.Printf("behind main: %s (run `docsync change rebase %s` or submit)\n", id, id)
+				fmt.Printf("behind main: %s (run `companion change rebase %s` or submit)\n", id, id)
 			}
 			return nil
 		},

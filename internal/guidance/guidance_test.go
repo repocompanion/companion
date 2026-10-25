@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bolacha/docsync/internal/codeindex"
-	"github.com/bolacha/docsync/internal/config"
-	"github.com/bolacha/docsync/internal/store"
+	"github.com/repocompanion/companion/internal/codeindex"
+	"github.com/repocompanion/companion/internal/config"
+	"github.com/repocompanion/companion/internal/store"
 )
 
 func TestLookupPrefersNarrowScopeAndOverrides(t *testing.T) {

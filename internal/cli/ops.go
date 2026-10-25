@@ -268,7 +268,7 @@ func (a *App) registryAddRepoCmd() *cobra.Command {
 			if err != nil {
 				if pendingNote(err) {
 					printResult(res)
-					return nil
+					return ErrPending
 				}
 				return err
 			}
@@ -283,7 +283,7 @@ func (a *App) registryAddRepoCmd() *cobra.Command {
 }
 
 func (a *App) doctorCmd() *cobra.Command {
-	var online, repair bool
+	var online, repair, strict bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check git, store, auth, mirror and state",
@@ -356,7 +356,9 @@ func (a *App) doctorCmd() *cobra.Command {
 				add("SSH reachability", err == nil, strings.TrimSpace(out))
 			}
 			if a.JSON {
-				_ = a.printJSON(checks)
+				if err := a.printJSON(checks); err != nil {
+					return err
+				}
 			} else {
 				for _, c := range checks {
 					mark := "ok"
@@ -366,11 +368,23 @@ func (a *App) doctorCmd() *cobra.Command {
 					fmt.Printf("%-18s %-5s %s\n", c.Name, mark, c.Message)
 				}
 			}
+			if strict {
+				failed := 0
+				for _, c := range checks {
+					if !c.OK {
+						failed++
+					}
+				}
+				if failed > 0 {
+					return fmt.Errorf("doctor: %d check(s) failed", failed)
+				}
+			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&online, "online", false, "also test SSH reachability")
 	cmd.Flags().BoolVar(&repair, "repair", false, "rebuild state.json from local worktrees")
+	cmd.Flags().BoolVar(&strict, "strict", false, "exit non-zero when any check fails")
 	return cmd
 }
 

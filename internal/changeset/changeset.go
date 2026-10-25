@@ -1306,10 +1306,10 @@ func (m *Manager) Switch(idOrArea string) (state.Change, error) {
 	return *c, nil
 }
 
-func (m *Manager) files(ctx context.Context, c state.Change) []string {
+func (m *Manager) files(ctx context.Context, c state.Change) ([]string, error) {
 	out, err := m.wt(ctx, c, "diff", "--name-only", "main...HEAD")
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list changed files: %w", err)
 	}
 	var files []string
 	for _, f := range strings.Split(out, "\n") {
@@ -1318,7 +1318,7 @@ func (m *Manager) files(ctx context.Context, c state.Change) []string {
 		}
 	}
 	sort.Strings(files)
-	return files
+	return files, nil
 }
 
 func scanSecrets(data string) bool {
@@ -1529,7 +1529,11 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 		return Result{}, err
 	}
 
-	res := Result{Change: c, Files: m.files(ctx, c)}
+	files, err := m.files(ctx, c)
+	if err != nil {
+		return Result{}, err
+	}
+	res := Result{Change: c, Files: files}
 
 	// Fetch and reconcile the PR before pushing: a collaborator may have marked
 	// the PR ready, or a host-side edit may have landed.
@@ -1585,7 +1589,10 @@ func (m *Manager) syncLocked(ctx context.Context, c state.Change, source string)
 	if _, err := m.git(ctx, "rev-parse", "--verify", remoteRef); err != nil {
 		remoteExists = false
 	}
-	res.Files = m.files(ctx, c)
+	res.Files, err = m.files(ctx, c)
+	if err != nil {
+		return res, err
+	}
 	if remoteExists {
 		_, err = m.wt(ctx, c, "push", "--force-with-lease", "origin", "HEAD:"+c.Branch)
 	} else {
@@ -1728,7 +1735,10 @@ func (m *Manager) SubmitWithOptions(ctx context.Context, idOrArea, summary, sour
 			return res, &PendingError{Op: "submit push", Err: err}
 		}
 		res.Pushed = true
-		res.Files = m.files(ctx, c)
+		res.Files, err = m.files(ctx, c)
+		if err != nil {
+			return res, err
+		}
 	}
 
 	title := pr.Title
@@ -1755,7 +1765,10 @@ func (m *Manager) SubmitWithOptions(ctx context.Context, idOrArea, summary, sour
 }
 
 func (m *Manager) lintChangeset(ctx context.Context, c state.Change) error {
-	files := m.files(ctx, c)
+	files, err := m.files(ctx, c)
+	if err != nil {
+		return err
+	}
 	if len(files) == 0 {
 		return nil
 	}
@@ -1780,7 +1793,10 @@ func (m *Manager) lintChangeset(ctx context.Context, c state.Change) error {
 // It returns warnings for advisory states and an error for missing paths or
 // missing symbols that a provider claimed to support.
 func (m *Manager) validateCodeRefs(ctx context.Context, c state.Change) ([]codeindex.DocValidation, []string, error) {
-	files := m.files(ctx, c)
+	files, err := m.files(ctx, c)
+	if err != nil {
+		return nil, nil, err
+	}
 	if len(files) == 0 {
 		return nil, nil, nil
 	}

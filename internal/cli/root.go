@@ -137,6 +137,17 @@ func (a *App) printJSON(v any) error {
 	return nil
 }
 
+// writeResult keeps --json valid on the partial-success path. Callers that
+// return ErrPending have already persisted local work, so the result object is
+// still useful to a script or agent.
+func (a *App) writeResult(r changeset.Result) error {
+	if a.JSON {
+		return a.printJSON(r)
+	}
+	printResult(r)
+	return nil
+}
+
 func (a *App) areaOrOrg(org bool) (string, error) {
 	s, err := a.session()
 	if err != nil {

@@ -190,8 +190,10 @@ func (a *App) changeSyncCmd() *cobra.Command {
 			res, err := s.Manager.Sync(context.Background(), id, "cli")
 			if err != nil {
 				if pendingNote(err) {
-					printResult(res)
-					return nil
+					if werr := a.writeResult(res); werr != nil {
+						return werr
+					}
+					return ErrPending
 				}
 				return err
 			}
@@ -219,8 +221,10 @@ func (a *App) changeSubmitCmd() *cobra.Command {
 			res, err := s.Manager.SubmitWithOptions(context.Background(), firstArg(args), summary, "cli", changeset.SubmitOptions{SkipLint: skipLint, SkipCodeRefs: skipCodeRefs})
 			if err != nil {
 				if pendingNote(err) {
-					printResult(res)
-					return nil
+					if werr := a.writeResult(res); werr != nil {
+						return werr
+					}
+					return ErrPending
 				}
 				return err
 			}

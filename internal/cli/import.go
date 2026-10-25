@@ -130,8 +130,14 @@ destinations, and --apply to create a changeset and open/update a draft PR.`,
 			res, err := s.Manager.Sync(ctx, c.ID, "cli")
 			if err != nil {
 				if pendingNote(err) {
-					printResult(res)
-					return nil
+					if a.JSON {
+						if werr := a.printJSON(map[string]any{"report": report, "result": res, "imported": report.Ready, "pending": true}); werr != nil {
+							return werr
+						}
+					} else {
+						printResult(res)
+					}
+					return ErrPending
 				}
 				return err
 			}

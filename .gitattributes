@@ -1,0 +1,6 @@
+# Keep line endings stable across platforms.
+#
+# GitHub's Windows runners check out with core.autocrlf=true, which converts
+# every text file to CRLF. Go tooling (gofmt, //go:embed, golden files) expects
+# LF, so `gofmt -l` would report the entire tree on Windows only.
+* text=auto eol=lf

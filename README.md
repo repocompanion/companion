@@ -1,134 +1,161 @@
 # Repo Companion
 
-**Repo Companion** is a Git-backed document store for humans and coding agents,
-shipped as the `companion` CLI. Project docs and organization guidance live in
-one central repository; every change is made in a local changeset worktree and
-published through a GitHub pull request.
+[![CI](https://github.com/repocompanion/companion/actions/workflows/ci.yml/badge.svg)](https://github.com/repocompanion/companion/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/repocompanion/companion?include_prereleases)](https://github.com/repocompanion/companion/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/repocompanion/companion)](go.mod)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-The primary problem it solves is **agent context and discoverability**: an agent
-can ask for the guidance relevant to a coding task before it starts, and can
-find the project docs, open PRs and reference implementations without guessing
-paths.
+**Repo Companion** is a Git-backed documentation store for humans and coding
+agents. It keeps project docs, organization patterns, decisions, and standards
+in one central repository. Every change is made in a local changeset worktree
+and published as a GitHub pull request.
 
-This is an early, working implementation of `PLAN.md`.
+The companion CLI and MCP server let an agent ask *“what guidance applies to
+this task?”* and find the relevant docs without guessing paths. It can then
+propose documentation changes through the same reviewed PR workflow humans use.
+Agents never merge.
 
-## Features
+> **Status: v0.1, pre-1.0.** The core workflow is usable, but interfaces may
+> still change between minor releases. See [VERSIONING.md](VERSIONING.md) and
+> the [roadmap](ROADMAP.md).
 
-- **Central docs store** (`your-org/docs-store`) with `org/`, `teams/` and
-  `projects/<owner>/<repo>/` areas.
-- **Read-only main mirror** at `~/.companion/main`; all reads are local and fast.
-- **Active changeset overlay** for reads: pending additions/modifications are visible, deleted docs are tombstoned, and results carry `source`/`state`.
-- **Bounded context** for agents: `docs_get_context` returns a 200-doc index by default, with `max_docs`/`full` controls and visible warnings when open PRs could not be checked.
-- **Idempotent knowledge writes**: repeating a decision, pattern or scaffold request returns the existing path instead of creating a duplicate PR.
-- **Non-MCP exports**: generate a managed `AGENTS.md` block, `llms.txt` discovery file, or a JSON/Markdown context bundle from the same overlay and BM25 search.
-- **Legacy import**: scan a Markdown tree, review a migration report, and apply resolved documents into one changeset with `companion import`.
-- **Code context**: validate `reference_impls` paths/symbols, resolve symbols with the native Go provider and optional ctags, attach resolved paths/lines/signatures to guidance, detect advisory drift, and expose `code map`, `code find` and `stale` commands plus MCP tools.
-- **Changeset worktrees** at `~/.companion/changes/<area>--<topic>/`.
-- **Explicit sync**: `change sync` commits, integrates the remote branch and
-  pushes; `change submit` lints the changed docs, rebases on `main`, marks the
-  PR ready and freezes the changeset. There is no daemon, polling or auto-push.
-- **Shared PRs**: collaborators join an open PR with `change join`; `submit`
-  freezes it until `change reopen`.
-- **GitHub integration** through SSH for Git and a token from
-  `COMPANION_FORGE_TOKEN`, `forge.token`, or `gh auth token` for PRs.
-- **MCP server** on stdio with context, guidance, read/history, changeset and
-  review-comment tools, plus roots, document/template resources and cursor
-  pagination.
-- **Layered context resolution** with provenance: flags, environment, repo
-  `.companion.yaml`, user config, org registry, Git/manifests/hostname.
-- **BM25 search** with field weighting, snippets, matched terms and score
-  explanations. Guidance uses the same ranking and returns snippets; use
-  `docs_read`/`companion cat` for full content.
-- **Guidance ranking** for patterns, ADRs and standards with project → team →
-  org precedence and explicit `overrides`.
-- **Shared validation** in `internal/docrules` for MCP writes, lint, templates
-  and submit preflight; `change submit` keeps the PR draft when lint or
-  code-reference checks fail.
-- **Lint** for frontmatter, canonical layout, broken links, duplicate IDs and likely secrets.
+## Try it in 60 seconds
 
-## Build
-
-Requirements: Go 1.25+, Git 2.30+.
+The offline demo creates a throwaway docs store, a small Go repository, and a
+changeset. It needs no GitHub account, token, or network access.
 
 ```bash
-go build -o companion ./cmd/companion
-./companion --help
+git clone https://github.com/repocompanion/companion.git
+cd companion
+make build
+bash docs/demo-cli-only.sh
 ```
 
-Or:
+The script starts and ends by checking its own output: worktree, overlay read,
+pushed branch, and changeset commit must all exist. See
+[docs/DEMO_CLI.md](docs/DEMO_CLI.md) for the walkthrough.
+
+## Install
+
+### Prebuilt binaries
+
+Download the archive for your OS and architecture from
+[Releases](https://github.com/repocompanion/companion/releases/latest), then
+place `companion` somewhere on `PATH`. Each archive contains `LICENSE`,
+`NOTICE`, `THIRD_PARTY_NOTICES.md`, and `SECURITY.md`; the release also publishes
+`checksums.txt`.
 
 ```bash
-make build
+# macOS/Linux example; use the latest version and correct architecture
+tar -xzf companion_*_darwin_arm64.tar.gz
+sudo mv companion /usr/local/bin/
+companion version
+```
+
+Verify a download against `checksums.txt` if your release includes it:
+
+```bash
+shasum -a 256 -c checksums.txt
+```
+
+### Go install
+
+```bash
+go install github.com/repocompanion/companion/cmd/companion@latest
+companion version
+```
+
+Go 1.25 or newer is required. `companion version` reports the module version
+for `go install` builds and the release version for downloaded archives.
+
+### Build from source
+
+```bash
+git clone https://github.com/repocompanion/companion.git
+cd companion
+make build        # ./companion
 make test
 ```
 
-## Optional tooling for code context
-
-Go code works without external tooling. These tools add broader validation:
-
-### Universal Ctags
+Optional tooling: **Universal Ctags** adds non-Go symbol indexing. Go code works
+without it. The first line of `ctags --version` must say `Universal Ctags`; the
+BSD `ctags` bundled with macOS is not used.
 
 ```bash
 # macOS
 brew install universal-ctags
-
 # Ubuntu/Debian
 sudo apt install universal-ctags
-
 # Windows
 winget install UniversalCtags.Ctags
-
-# Verify
-ctags --version
 ```
 
-The first line must say `Universal Ctags`. The BSD `ctags` bundled with macOS
-does not provide JSON output and is not used.
+## Quick start with GitHub
 
-LSP and SCIP providers were prototyped and are now parked in `idea.md`. They
-are not part of the current CLI surface.
+### 1. Create the docs store
 
-## Quick start
+Create a private GitHub repository for the central store, for example
+`your-org/docs-store`. It can be empty: `companion init` creates the initial
+`main` commit with `.companion/registry.yaml` if the repository has no commits.
+If your organization requires a different default branch, create `main` first.
+
+The recommended repository layout and branch-protection settings are in
+[docs/STORE.md](docs/STORE.md).
+
+### 2. Authenticate
 
 ```bash
-# 1. Create the central store in GitHub, then initialize locally.
-companion init --remote git@github.com:your-org/docs-store.git
-
-# 2. Authenticate for PRs.
 gh auth login
+```
 
-# 3. Read context and guidance.
+Git uses your normal SSH key or credential helper. PR operations use a token
+from `COMPANION_FORGE_TOKEN`, `forge.token`, or `gh auth token`. See
+[SECURITY.md](SECURITY.md) for the token model.
+
+### 3. Initialize and ask for context
+
+```bash
+companion init --remote git@github.com:your-org/docs-store.git
 companion context
-companion guidance "implement an SQS consumer in Go"
+companion guidance "implement an SQS consumer in Go" --lang go
+companion doctor --strict
+```
 
-# 4. Start a changeset and author a doc.
+`companion context` shows the resolved project, team, languages, and the source
+of each value. `companion guidance` ranks patterns, ADRs, and standards and
+attaches validated `reference_impls` where the code repository is available.
+
+### 4. Make a documentation change
+
+```bash
 companion change start "refund flow"
 companion new flows/refund.md --template flow
 companion edit flows/refund.md
-
-# 5. Push and open/update the draft PR.
-companion change sync
-
-# 6. When ready for review.
+companion change sync        # commit, push, create/update a draft PR
 companion change submit -m "document the refund flow"
 ```
 
-For a ready PR that receives review comments:
+`submit` lints the changed docs, validates code references, rebases on `main` if
+needed, marks the PR ready, and freezes the changeset. A human merges under
+branch protection. To continue after review:
 
 ```bash
 companion change reopen
-# edit files
-companion change sync
+# edit and sync
 companion change submit
 ```
 
-Agent setup (Claude Code):
+## Connect an agent
+
+The MCP server runs over stdio. No port is opened and no daemon is started.
+
+**Claude Code:**
 
 ```bash
 claude mcp add --scope user companion -- companion mcp
 ```
 
-Cursor (`~/.cursor/mcp.json`):
+**Cursor** (`~/.cursor/mcp.json`):
 
 ```json
 {
@@ -141,54 +168,9 @@ Cursor (`~/.cursor/mcp.json`):
 }
 ```
 
-`companion init` prints a snippet for each code repository's `CLAUDE.md`,
-`AGENTS.md` or `.cursor/rules`.
-
-## Commands
-
-| Command | Purpose |
-|---|---|
-| `companion init --remote <url>` | Clone the bare store and create the main mirror |
-| `companion pull` | Fetch main and fast-forward the mirror |
-| `companion status` | Mirror, changesets, dirty files and PR states |
-| `companion context` | Resolved identity/project/team/languages with sources |
-| `companion project` | Resolved project, team and area |
-| `companion ls [DIR] [--pending]` | List docs with pending states, optionally with open PRs |
-| `companion cat <doc> [--rev R] [--pr N]` | Print a document; reports changeset deletions |
-| `companion search <query> [--all]` | Search with the active changeset overlay |
-| `companion guidance "<task>" [--lang go]` | Ranked patterns, ADRs, standards with validated code context |
-| `companion export agents-md` | Managed AGENTS.md block for coding agents |
-| `companion export llms-txt` | Compact llms.txt discovery file |
-| `companion export context` | Bounded JSON/Markdown context bundle |
-| `companion import --from <dir>` | Dry-run or apply a legacy Markdown migration |
-| `companion change start "<topic>"` | Start a changeset |
-| `companion change join <PR#>` | Join a shared changeset |
-| `companion change sync [id]` | Commit, integrate, push, create/update draft PR |
-| `companion change submit [id] [--skip-lint] [--skip-code-refs]` | Lint, validate code refs, rebase, mark ready, freeze |
-| `companion change reopen [id]` | Return a ready PR to draft |
-| `companion change rebase [id]` | Resolve conflicts with the remote branch/main |
-| `companion change cleanup [id]` | Remove a merged/closed changeset |
-| `companion change abandon [id]` | Close the PR and remove the worktree |
-| `companion change adopt` | Move accidental mirror edits into a changeset |
-| `companion new <doc> --template ...` | Create a doc from a template |
-| `companion adr new "<title>"` | Create a date-stamped ADR |
-| `companion edit <doc>` | Open a document in the active worktree |
-| `companion move <doc> <new-path>` | Rename with Git history preserved |
-| `companion log <doc> [--wip]` | Versions, authors, PRs and agent source |
-| `companion diff <doc> [A] [B] [--pr N]` | Diff versions or a PR |
-| `companion blame <doc>` | Line authorship |
-| `companion restore <doc> <version>` | Open a changeset that restores a version |
-| `companion lint [--store DIR]` | Local subset of store CI |
-| `companion validate-code-refs [--all]` | Validate reference_impls paths, symbols and drift |
-| `companion stale [--all]` | Show documents with stale code references |
-| `companion code map [--path DIR] [--kind KIND]` | Index available code symbols in the current repo |
-| `companion code find <symbol>` | Resolve a code symbol |
-| `companion config get\|set\|init-repo` | Manage user and repo config |
-| `companion registry add-repo <repo> --team <t>` | Update the org registry via PR |
-| `companion doctor [--online]` | Check git, store, auth, mirror and code providers |
-| `companion mcp` | Run the MCP server on stdio |
-
-## Exports for non-MCP agents
+`companion init` also prints a short documentation instruction block for a
+repository’s `CLAUDE.md`, `AGENTS.md`, or `.cursor/rules`. For non-MCP clients,
+use the exports:
 
 ```bash
 companion export agents-md --output AGENTS.md
@@ -196,68 +178,106 @@ companion export llms-txt --output llms.txt
 companion export context --format markdown --output context.md
 ```
 
-Exports use the active changeset overlay, so pending docs are visible with their
-source/state. They include a snapshot warning, required-doc status, documentation
-groups and top BM25 guidance for common tasks.
+## What it does
 
-`agents-md` writes a managed `<!-- companion:begin -->` / `<!-- companion:end -->`
-block and preserves human content outside it. It refuses to overwrite a file
-without that block unless `--force` is passed. Without `--output`, all export
-commands write to stdout.
+- **One central docs store** with `org/`, `teams/`, and
+  `projects/<owner>/<repo>/` areas.
+- **Read-only local mirror** at `~/.companion/main`, with an active changeset
+  overlay so pending additions, edits, and deletions are visible.
+- **Explicit changesets**: a branch, a worktree, and a draft PR. No background
+  sync, polling, or auto-push.
+- **Guidance for agents**: task-based ranking across patterns, ADRs, and
+  standards, with project → team → org precedence and explicit overrides.
+- **Local BM25 search** with field weighting, snippets, line numbers, and
+  matched terms.
+- **Bounded context** for agents, with pagination and visible warnings when open
+  PRs cannot be checked.
+- **Code references** in document frontmatter, validated against the current
+  repository with the native Go provider or optional ctags.
+- **Exports** for agents without MCP: a managed `AGENTS.md` block, `llms.txt`,
+  and a JSON/Markdown context bundle.
+- **Legacy import** that scans a Markdown tree, reports ambiguous files, and
+  applies only a resolved mapping.
+- **MCP tools** for context, guidance, docs, changesets, reviews, code maps, and
+  pull requests.
+- **Safety controls**: canonical paths, frontmatter validation, symlink
+  rejection, `base_rev` guards, secret scanning, per-area locks, and no
+  agent merge.
 
 ## Importing existing documentation
+
+Start with a dry run. The importer never guesses ambiguous files:
 
 ```bash
 # Inspect the proposed mapping without writing anything.
 companion import --from ./docs --project acme/api --report migration.json
 
-# Resolve ambiguous files with a path mapping.
+# Resolve ambiguous files with a path mapping, then apply.
 companion import --from ./docs --project acme/api --map mapping.json --apply
 ```
 
-The importer detects README/architecture docs, ADRs, flows, runbooks, patterns
-and standards from frontmatter, paths and headings. Ambiguous entries,
-aggregate files and collisions are marked `unresolved` or `collision` rather
-than guessed. `--apply` requires a report with no unresolved entries, writes
-the documents into one changeset and opens/updates a draft PR.
+Ambiguous entries, aggregate files, and collisions are marked `unresolved` or
+`collision`. `--apply` requires a report with no unresolved entries, writes the
+documents into one changeset, and opens or updates a draft PR. Import copies
+files; preserving history with `git mv` is not implemented yet.
 
-The current implementation copies external files. `git mv`/history preservation
-and aggregate-section mappings are deferred; see `CAVEATS.md`.
-
-## MCP roots, resources and pagination
-
-- `docs_list`, `docs_search` and `docs_get_context` accept `limit`/`max_docs`
-  and an opaque `cursor`; responses include `next_cursor` when another page
-  exists.
-- `companion://docs/{+path}` resources return an overlay-aware document.
-- `companion://templates/{kind}` resources return canonical skeletons.
-- Tool annotations distinguish read-only, destructive and idempotent tools.
-- MCP roots are used for project discovery when the client provides them. The
-  current implementation negotiates protocol `2025-11-25` so the roots API
-  remains available during its deprecation window; newer protocol versions fall
-  back to cwd until multi-round-trip roots support is added.
-
-## MCP document structure
-
-MCP writes are validated. A project uses this canonical layout:
+## How it works
 
 ```text
-README.md
-architecture.md
-adr/YYYY-MM-DD-<slug>.md
-flows/<slug>.md
-runbooks/<slug>.md
-patterns/<slug>.md
-standards/<slug>.md
+MCP client / CLI ──► runtime.Session ──► changeset.Manager
+                                              │
+                    ┌─────────────────────────┼─────────────────────┐
+                    ▼                         ▼                     ▼
+             ~/.companion/main        changeset worktree     GitHub PR
+             (read-only mirror)       (~/.companion/changes)  (forge API)
 ```
 
-Every `.md` written through MCP needs frontmatter with `id`, `kind`, `title`,
-`status`, `owners` and `last_reviewed`. `docs_get_context` returns this structure
-in its `structure` field even when a project has no docs yet. Flat aggregate
-files such as `decisions.md` or `operations.md` are rejected; use one ADR per
-decision, one flow per flow and one runbook per procedure. `docs_delete` can
-remove only `.md`/`.mmd` files and requires `base_rev`; `docs_move` renames
-with `git mv` and validates the destination.
+The docs store is cloned bare, `main` is checked out read-only, and each
+changeset gets its own worktree. The local `state.json` is a rebuildable cache.
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the package map, read/write
+paths, and safety boundaries.
+
+## Documentation
+
+- [Store setup](docs/STORE.md) — repository layout, branch protection,
+  CODEOWNERS, registry, and docs CI.
+- [Architecture](docs/ARCHITECTURE.md) — packages, data flow, storage layout.
+- [FAQ](docs/FAQ.md) — setup, authentication, Windows, and design questions.
+- [Troubleshooting](docs/TROUBLESHOOTING.md) — common errors and recovery.
+- [Comparison](docs/COMPARISON.md) — versus `AGENTS.md`, Backstage, Confluence,
+  and docs-as-code.
+- [CLI demo](docs/DEMO_CLI.md) — the offline walkthrough in detail.
+- [Versioning](VERSIONING.md), [roadmap](ROADMAP.md), and
+  [changelog](CHANGELOG.md).
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `companion init --remote <url>` | Clone the store and create the local mirror; seed an empty store |
+| `companion pull` | Fetch `main` and fast-forward the mirror |
+| `companion context` / `project` | Show resolved project, team, languages, and provenance |
+| `companion status` | Mirror, changesets, dirty files, and PR state |
+| `companion ls [DIR] [--pending]` | List docs, optionally with active changeset state |
+| `companion cat <doc> [--rev R] [--pr N]` | Print a document from main, a revision, or a PR |
+| `companion search <query> [--all]` | Search the active overlay |
+| `companion guidance "<task>" [--lang go]` | Ranked patterns, ADRs, and standards with code context |
+| `companion change` (`start`, `sync`, `submit`, `reopen`, `rebase`, `cleanup`, `abandon`, `join`, `adopt`) | Manage the changeset lifecycle |
+| `companion new <doc> --template ...` | Create a document from a canonical template |
+| `companion adr new "<title>"` | Create a date-stamped ADR |
+| `companion edit\|move\|restore` | Edit, rename with history, or restore a document |
+| `companion log\|diff\|blame` | Inspect versions, diffs, and authorship |
+| `companion export agents-md\|llms-txt\|context` | Render context for non-MCP agents |
+| `companion import --from <dir>` | Inspect or apply a legacy Markdown migration |
+| `companion lint [--store DIR]` | Local subset of store CI |
+| `companion validate-code-refs [--all]` | Validate reference paths, symbols, and drift |
+| `companion stale [--all]` | Show documents with stale code references |
+| `companion code map\|find` | Inspect the current repository’s symbols |
+| `companion doctor [--strict] [--repair]` | Check git, store, auth, mirror, state, and providers |
+| `companion mcp` | Run the MCP server on stdio |
+| `companion version` | Print the build version |
+
+Run `companion <command> --help` for flags and examples.
 
 ## MCP tools
 
@@ -266,230 +286,57 @@ Read: `docs_get_context`, `docs_get_guidance`, `docs_list`, `docs_search`,
 `docs_validate_code_refs`, `docs_stale`, `docs_code_map`, `docs_code_find`.
 
 Changes: `docs_change_start`, `docs_change_join`, `docs_write`, `docs_patch`,
-`docs_move`, `docs_delete`, `docs_record_decision`, `docs_propose_pattern`, `docs_scaffold_project`,
-`docs_set_context`, `docs_change_sync`, `docs_change_submit`,
-`docs_change_reopen`, `docs_change_status`, `docs_review_comments`.
-`docs_change_status` includes CI check details, review decision, unresolved
-threads, mergeability and short-TTL cached results.
+`docs_move`, `docs_delete`, `docs_record_decision`, `docs_propose_pattern`,
+`docs_scaffold_project`, `docs_set_context`, `docs_change_sync`,
+`docs_change_submit`, `docs_change_reopen`, `docs_change_status`,
+`docs_review_comments`.
 
-Agents can never merge. `docs_change_submit` lints changed documents and
-validates their code references, keeping the PR as a draft on errors. Missing
-reference paths and missing symbols block submit; stale, external or unverified
-references are warnings. Only a human can bypass these checks with
-`companion change submit --skip-lint` or `--skip-code-refs`. A human merges the PR
-under GitHub branch protection.
-
-## Code context
-
-Code references are declared in document frontmatter:
-
-```yaml
-reference_impls:
-  - repo: your-org/payments-api
-    path: internal/consumer/consumer.go
-    symbol: Consumer.Run        # optional
-    kind: method                # optional
-    ref: main
-    fingerprint: sha256:...     # optional
-```
-
-Path validation works for every language. Symbol validation is provider-based:
-
-- native Go provider: `go/packages` / `go/ast` for packages, functions, methods,
-  types, routes, jobs, migrations, config fields and tests;
-- optional `universal-ctags`: syntax symbols for many languages;
-- otherwise: `git grep`, reported as `unverified`.
-
-Current-repo references are validated. References to another repo are reported
-as `external` and are not symbol-checked. Drift is advisory.
-
-### CLI
-
-```bash
-# Validate all reference_impls in the current project.
-companion validate-code-refs
-
-# Validate one document.
-companion validate-code-refs --path projects/acme/api/patterns/sqs.md
-
-# Validate the whole store as JSON.
-companion validate-code-refs --all --json
-
-# Show only stale references.
-companion stale
-companion stale --all --json
-
-# Inspect the current repo's symbol map.
-companion code map --path internal/consumer
-
-# Filter by kind: function, method, type, route, job, migration, config, test.
-companion code map --kind config
-
-# Resolve a specific symbol.
-companion code find Consumer.Run --path internal/consumer
-
-# Show available providers.
-companion doctor
-```
-
-`code map` uses the native Go provider and optional ctags. Non-Go symbols use
-ctags when installed, otherwise `git grep` as `unverified`.
-
-Code indexes are cached under:
-
-```text
-~/.companion/cache/code/<repo>/<commit>/
-```
-
-### MCP
-
-The same operations are available as read-only tools:
-
-| Tool | Purpose |
-|---|---|
-| `docs_validate_code_refs` | Validate paths, symbols, providers and drift |
-| `docs_stale` | Return documents with stale references |
-| `docs_code_map` | Return bounded Go/ctags symbols for the current repo |
-| `docs_code_find` | Resolve a symbol through available providers |
-
-Examples:
-
-```text
-docs_validate_code_refs { "scope": "project" }
-docs_validate_code_refs { "path": "projects/acme/api/patterns/sqs.md" }
-docs_stale { "scope": "project" }
-docs_code_map { "path": "internal/consumer", "kind": "method", "limit": 100 }
-docs_code_find { "symbol": "Consumer.Run", "path": "internal/consumer" }
-```
-
-Reference validation results include:
-
-```text
-path_status    valid | missing | external | unverified | invalid
-symbol_status  valid | missing | unsupported | external | unverified
-drift_status   fresh | stale | unknown
-provider       go | ctags | git-grep
-```
-
-`docs_get_guidance` and `companion guidance` attach `code_context` entries with the
-resolved path, line, qualified name, signature, provider and validation status.
-If no code repository is available, they return a warning instead of failing.
-
-Drift is currently advisory. It appears in validation, context, guidance and
-submit warnings, and in `docs_stale`, but does not block submit.
-
-### Provider limits
-
-- Go definitions/symbols: native.
-- ctags: syntax symbols only.
-- LSP, SCIP and LSIF: parked in `idea.md`; not part of the current CLI.
-- Cross-repo symbol resolution: intentionally out of scope.
-- Symbol validation at non-HEAD commits uses a temporary detached worktree;
-  paths are always checked against the original repository.
-
-## Configuration
-
-Highest priority first:
-
-1. flags / MCP arguments
-2. environment (`COMPANION_PROJECT`, `COMPANION_TEAM`, `COMPANION_HOME`, ...)
-3. repo `.companion.yaml`
-4. user config (`~/.config/companion/config.yaml`; `%APPDATA%\companion\config.yaml`)
-5. store registry (`.companion/registry.yaml`)
-6. auto-detection from Git remotes, manifests and hostname
-7. built-in defaults
-
-Example user config:
-
-```yaml
-remote: git@github.com:your-org/docs-store.git
-forge:
-  type: github
-user:
-  default_team: payments
-machine: ana-mbp
-changesets:
-  branch_prefix: docs
-  auto_create: true
-mcp:
-  org_write: propose-only
-  max_file_size: 1048576
-```
-
-Example repo config:
-
-```yaml
-project: your-org/payments-api
-team: payments
-domain: checkout
-languages: [go]
-docs:
-  required: [README.md, architecture.md, runbooks/]
-```
+`docs_write` and `docs_patch` require canonical paths and frontmatter;
+`docs_delete` and edits to existing files require `base_rev`. Security-sensitive
+user configuration cannot be changed through MCP. There is no merge, abandon, or
+cleanup tool: a human merges the PR.
 
 ## Safety model
 
 - `main` is read-only locally and protected on GitHub.
-- Writes happen only in a changeset worktree; agent writes are committed
-  immediately and local secrets are scanned before every commit.
-- Paths are checked for escapes (including symlinks).
+- All writes happen in a changeset worktree, are committed immediately, and are
+  scanned for likely secrets before the commit.
+- Document paths reject absolute paths, traversal, `.git`, and symlink escapes.
+- `base_rev` prevents overwriting a newer edit; failed writes roll back.
 - Per-area file locks serialize Git work between concurrent CLI/MCP calls.
-- MCP `docs_write` / `docs_patch` reject missing frontmatter and non-canonical
-  document paths.
-- `change sync` refuses to push when a PR is ready.
-- `change submit` freezes a changeset until `change reopen`.
-- Unpushed local work is never deleted silently; cleanup/abandon require
-  `--archive` or `--force`.
-- No daemon, service, polling, cloud agent or local network port.
+- `change submit` freezes a changeset until `change reopen`; `change sync`
+  refuses to push a ready PR.
+- Unpushed work is never silently deleted; cleanup/abandon require `--archive`
+  or `--force`.
+- No daemon, service, polling loop, telemetry, or local network port.
+- The secret scan is a heuristic, not a guarantee.
 
-## Development
+## Status and limitations
 
-```bash
-make fmt
-make test
-make vet
-```
+- **GitHub only** for the PR workflow; GitLab is not implemented.
+- **One central store**; project docs are not stored in service repositories.
+- **No web UI, live co-editing, semantic/vector search, or background daemon.**
+- **MCP roots** are supported on protocol `2025-11-25`. Newer clients that do not
+  provide roots fall back to the process working directory.
+- **Agents can never merge.** Branch protection remains the source of truth.
+- **Code references** are strongest for Go. Non-Go symbols use optional
+  Universal Ctags; without it they are reported as unverified. Cross-repo symbol
+  resolution is out of scope, and drift warnings are advisory.
+- **Import copies files**; it does not yet preserve Git history with `git mv`.
+- **Pre-1.0:** a minor release may change a surface. See
+  [VERSIONING.md](VERSIONING.md).
 
-Integration tests use local bare repositories and a fake GitHub API server; they
-do not need GitHub or network access. Real-token PR/GraphQL paths are exercised
-manually against a sandbox repository.
+## Contributing
 
-## Limitations
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). For questions, use
+[Discussions](https://github.com/repocompanion/companion/discussions); for
+reproducible bugs, use the issue templates.
 
-- GitHub only; GitLab is not implemented.
-- One central store; docs are not stored inside service repositories.
-- No web UI, live co-editing, semantic search or background daemon.
-- `docs_change_status` shows check-run conclusions, review decision, unresolved
-  review threads and mergeability. Branch protection remains the source of truth.
-  Legacy commit-status contexts, rate-limit warnings and the marker fast path are
-  not implemented yet.
-- MCP roots are supported on protocol `2025-11-25`; protocol `2026-07-28+`
-  falls back to cwd because roots were replaced by multi-round-trip requests.
-- The current MCP roots implementation is intentionally lazy and cache-aware;
-  it does not yet use the newer multi-round-trip roots input request.
-- Image/binary additions are a human CLI/editor action, not an MCP write.
-- Import copies files; it does not yet preserve Git history with `git mv`.
-- `companion import` is CLI-only; no MCP import tool scans arbitrary local paths.
-- Code-reference validation is strongest for Go. Non-Go syntax symbols use
-  `universal-ctags`; without it they use `git grep` and are marked `unverified`.
-- The native Go provider is the only semantic provider.
-- LSP, SCIP and LSIF are parked in `idea.md`; they are not part of the current CLI.
-- Code-reference validation is not yet part of `companion lint`; it runs during
-  `change submit` and through `validate-code-refs`.
-- Go indexing covers packages, functions, methods, types, basic routes,
-  job-like functions, config fields, migrations and test functions. The
-  job/config/migration heuristics are intentionally conservative and can miss
-  framework-specific patterns.
-- ctags is syntax-only and language coverage depends on the installed
-  Universal Ctags build.
-- Drift warnings are advisory. Submit warns but never blocks on drift.
-- Code-change drift uses the referenced path’s latest Git date.
-- `docs_stale` only covers the current repository.
-- Fingerprints are compared for Go and ctags symbols when available;
-  unsupported providers and path-only references may report drift as `unknown`.
-
-See `PLAN.md` for the full design and roadmap.
+**Security:** do not open a public issue. Use
+[SECURITY.md](SECURITY.md).
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Third-party
+notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

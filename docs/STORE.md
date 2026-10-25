@@ -6,9 +6,14 @@
 ## 1. Create the repository
 
 Create an empty **private** GitHub repository. Give every engineer read access
-and use CODEOWNERS plus branch protection for write control. The companion Git
-transport is SSH; API calls use a token from `gh auth token` or
-`COMPANION_FORGE_TOKEN`.
+and use CODEOWNERS plus branch protection for write control. Git transport can
+use SSH (recommended) or HTTPS with your normal credential helper; API calls use
+a token from `gh auth token` or `COMPANION_FORGE_TOKEN`.
+
+You can leave the repository empty. `companion init` creates the initial `main`
+commit with `.companion/registry.yaml` when the remote has no commits, then
+creates the local mirror. If your organization requires an initial README or a
+different default branch, create `main` before running init.
 
 Recommended layout:
 
@@ -61,7 +66,7 @@ Route review by area. Adjust the team names to your organization:
 /projects/your-org/payments-api/ @your-org/payments
 
 /.github/                        @your-org/architecture
-/.companion/                       @your-org/architecture
+/.companion/                     @your-org/architecture
 ```
 
 `companion context` reads this file for the reviewer display. GitHub itself
@@ -129,9 +134,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The plan also calls for validating reference implementations against GitHub.
-That requires a token and network access; it is not part of the local lint
-subset yet.
+The reference validation in `companion lint` runs when a code repository is
+available. Running `companion lint --store .` from a checkout of the docs store
+(without a code repository) checks the structural subset; run
+`companion validate-code-refs` from the service repository to validate
+`reference_impls` paths and symbols.
 
 ## 6. Seed content
 

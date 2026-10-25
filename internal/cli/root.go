@@ -200,9 +200,9 @@ func (a *App) initCmd() *cobra.Command {
 func checkInitAuth(rt *runtime.Runtime, remote string) {
 	ctx := context.Background()
 	if out, err := gitx.Run(ctx, "", "ls-remote", "--heads", remote, "main"); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: SSH check failed for %s: %v\n", remote, err)
+		fmt.Fprintf(os.Stderr, "warning: SSH check failed for %s: %v\n", gitx.RedactRemote(remote), err)
 	} else if strings.TrimSpace(out) == "" {
-		fmt.Fprintf(os.Stderr, "warning: SSH check succeeded but %s has no main branch\n", remote)
+		fmt.Fprintf(os.Stderr, "warning: SSH check succeeded but %s has no main branch\n", gitx.RedactRemote(remote))
 	} else {
 		fmt.Println("ssh:    ok")
 	}

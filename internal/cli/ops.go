@@ -311,7 +311,7 @@ func (a *App) doctorCmd() *cobra.Command {
 			}
 			add("git", okGit, gitVersion+" (need >= 2.30)")
 			add("store", rt.Store.Exists(), rt.Store.Bare)
-			add("remote", rt.Store.Remote != "" && !strings.Contains(rt.Store.Remote, "your-org"), rt.Store.Remote)
+			add("remote", rt.Store.Remote != "" && !strings.Contains(rt.Store.Remote, "your-org"), gitx.RedactRemote(rt.Store.Remote))
 			add("github token", rt.Forge != nil && rt.Forge.Available(), "COMPANION_FORGE_TOKEN, forge.token, or gh auth token")
 			add("code provider go", true, codeindex.NewGoProvider().Version())
 			ctags := codeindex.NewCtagsProvider()

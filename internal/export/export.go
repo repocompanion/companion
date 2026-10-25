@@ -275,11 +275,11 @@ func docURL(remote, rel, state string) string {
 	if state != "" && state != "main" {
 		return ""
 	}
-	owner, repo, err := gitx.SplitGitHubRemote(remote)
+	host, owner, repo, err := gitx.SplitRemote(remote)
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("https://github.com/%s/%s/blob/main/%s", owner, repo, rel)
+	return fmt.Sprintf("https://%s/%s/%s/blob/main/%s", host, owner, repo, rel)
 }
 
 func snapshotLine(b *Bundle) string {

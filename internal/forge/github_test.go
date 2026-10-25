@@ -3,6 +3,8 @@ package forge
 import (
 	"strings"
 	"testing"
+
+	"github.com/repocompanion/companion/internal/config"
 )
 
 func TestManagedBodyPreservesHumanText(t *testing.T) {
@@ -26,5 +28,27 @@ func TestManagedBodyPreservesHumanText(t *testing.T) {
 	withTrailer := ManagedBody(updated, "cs-1", "org/patterns", []string{"org/patterns/b.md"}, "Companion-Source: agent:mcp")
 	if !strings.Contains(withTrailer, "Companion-Source: agent:mcp") {
 		t.Fatalf("trailer missing: %s", withTrailer)
+	}
+}
+
+func TestNewFromRemoteRejectsUnsupportedHost(t *testing.T) {
+	if _, err := NewFromRemote("https://gitlab.com/acme/docs.git", config.ForgeConfig{Token: "test"}); err == nil {
+		t.Fatal("expected a non-GitHub remote to be rejected")
+	}
+}
+
+func TestNewFromRemoteAcceptsMatchingEnterpriseHost(t *testing.T) {
+	c, err := NewFromRemote("git@github.example.com:acme/docs.git", config.ForgeConfig{
+		Token:  "test",
+		APIURL: "https://github.example.com/api/v3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Host != "github.example.com" || c.Owner != "acme" || c.Repo != "docs" {
+		t.Fatalf("client = host=%q owner=%q repo=%q", c.Host, c.Owner, c.Repo)
+	}
+	if !c.Available() {
+		t.Fatal("client should be available with a token")
 	}
 }

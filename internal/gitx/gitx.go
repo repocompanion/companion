@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,7 +29,7 @@ func (e *CommandError) Error() string {
 	if msg == "" {
 		msg = e.Err.Error()
 	}
-	return fmt.Sprintf("git %s: %s", strings.Join(e.Args, " "), msg)
+	return fmt.Sprintf("git %s: %s", RedactRemote(strings.Join(e.Args, " ")), RedactRemote(msg))
 }
 
 func (e *CommandError) Unwrap() error { return e.Err }
@@ -109,50 +110,98 @@ func Detect(ctx context.Context, cwd string) Detected {
 	return d
 }
 
-var scpRemote = regexp.MustCompile(`^[^@]+@[^:]+:(.+)$`)
+var (
+	scpRemote  = regexp.MustCompile(`^([^@/:]+@)?([^:/]+):(.+)$`)
+	drivePath  = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
+	repoPartRE = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+)
 
-// SplitGitHubRemote normalizes the common GitHub remote forms to owner/repo.
-// Supported:
+// SplitRemote parses a Git remote into its host and a GitHub-style owner/repo
+// path. The host is returned separately so callers never silently treat a
+// GitLab or arbitrary host as github.com.
 //
-//	git@github.com:owner/repo.git
-//	ssh://git@github.com/owner/repo.git
-//	https://github.com/owner/repo.git
-//	git://github.com/owner/repo.git
-func SplitGitHubRemote(remote string) (owner, repo string, err error) {
+// Supported forms:
+//
+//	git@host:owner/repo.git
+//	ssh://git@host/owner/repo.git
+//	https://host/owner/repo.git
+//	git://host/owner/repo.git
+func SplitRemote(remote string) (host, owner, repo string, err error) {
 	remote = strings.TrimSpace(remote)
 	if remote == "" {
-		return "", "", fmt.Errorf("empty git remote")
+		return "", "", "", fmt.Errorf("empty git remote")
 	}
-	path := ""
-	switch {
-	case strings.HasPrefix(remote, "http://"), strings.HasPrefix(remote, "https://"), strings.HasPrefix(remote, "ssh://"), strings.HasPrefix(remote, "git://"):
-		// Strip scheme and optional user, then take the path after the host.
-		s := remote
-		if i := strings.Index(s, "://"); i >= 0 {
-			s = s[i+3:]
+	if filepath.IsAbs(remote) || drivePath.MatchString(remote) {
+		return "", "", "", fmt.Errorf("not a hosted git remote: %s", RedactRemote(remote))
+	}
+
+	pathPart := ""
+	if i := strings.Index(remote, "://"); i >= 0 {
+		u, perr := url.Parse(remote)
+		if perr != nil || u.Hostname() == "" {
+			return "", "", "", fmt.Errorf("invalid git remote: %s", RedactRemote(remote))
 		}
-		if i := strings.Index(s, "@"); i >= 0 {
-			s = s[i+1:]
+		switch u.Scheme {
+		case "http", "https", "ssh", "git":
+		default:
+			return "", "", "", fmt.Errorf("unsupported git remote scheme %q", u.Scheme)
 		}
-		if i := strings.Index(s, "/"); i >= 0 {
-			path = s[i+1:]
-		}
+		host = u.Hostname()
+		pathPart = u.Path
+	} else if m := scpRemote.FindStringSubmatch(remote); m != nil {
+		host = m[2]
+		pathPart = m[3]
+	} else {
+		return "", "", "", fmt.Errorf("not a hosted git remote: %s", RedactRemote(remote))
+	}
+
+	pathPart = strings.Trim(pathPart, "/")
+	pathPart = strings.TrimSuffix(pathPart, ".git")
+	parts := strings.Split(pathPart, "/")
+	if len(parts) != 2 || !validRepoPart(parts[0]) || !validRepoPart(parts[1]) {
+		return "", "", "", fmt.Errorf("remote must be host/owner/repo, got %s", RedactRemote(remote))
+	}
+	return strings.ToLower(host), parts[0], parts[1], nil
+}
+
+func validRepoPart(p string) bool {
+	if p == "" || p == "." || p == ".." || strings.HasPrefix(p, "-") {
+		return false
+	}
+	return repoPartRE.MatchString(p)
+}
+
+// IsGitHubHost reports whether host is github.com (including www).
+func IsGitHubHost(host string) bool {
+	switch strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), ".")) {
+	case "github.com", "www.github.com":
+		return true
 	default:
-		if m := scpRemote.FindStringSubmatch(remote); m != nil {
-			path = m[1]
-		}
+		return false
 	}
-	path = strings.Trim(path, "/")
-	path = strings.TrimSuffix(path, ".git")
-	parts := strings.Split(path, "/")
-	if len(parts) < 2 {
-		return "", "", fmt.Errorf("not a GitHub owner/repo remote: %s", remote)
+}
+
+// SplitGitHubRemote normalizes the common GitHub remote forms to owner/repo.
+// Non-GitHub hosts are rejected; callers that support enterprise hosts must use
+// SplitRemote and validate the host against their configured API URL.
+func SplitGitHubRemote(remote string) (owner, repo string, err error) {
+	host, owner, repo, err := SplitRemote(remote)
+	if err != nil {
+		return "", "", err
 	}
-	owner, repo = parts[0], parts[1]
-	if owner == "" || repo == "" {
-		return "", "", fmt.Errorf("not a GitHub owner/repo remote: %s", remote)
+	if !IsGitHubHost(host) {
+		return "", "", fmt.Errorf("not a GitHub remote: host %q is not github.com", host)
 	}
 	return owner, repo, nil
+}
+
+var urlUserInfo = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@]+@`)
+
+// RedactRemote removes credentials from a URL or command line. It is used on
+// error text and display paths so a token embedded in a remote URL never lands
+// in logs or diagnostic output.
+func RedactRemote(s string) string {
+	return urlUserInfo.ReplaceAllString(s, "${1}***@")
 }
 
 var (

@@ -54,6 +54,7 @@ func (p PR) StateName() string {
 }
 
 type Client struct {
+	Host    string
 	Owner   string
 	Repo    string
 	Token   string
@@ -72,9 +73,23 @@ type Client struct {
 // because a token is missing: read-only store operations still work and the
 // caller can report that PR actions are unavailable.
 func NewFromRemote(remote string, cfg config.ForgeConfig) (*Client, error) {
-	owner, repo, err := gitx.SplitGitHubRemote(remote)
+	host, owner, repo, err := gitx.SplitRemote(remote)
 	if err != nil {
 		return &Client{enabled: false}, nil
+	}
+	if !gitx.IsGitHubHost(host) {
+		// Do not silently treat another forge as github.com. A GitHub
+		// Enterprise host is accepted only when the configured API URL names
+		// the same host.
+		apiHost := ""
+		if cfg.APIURL != "" {
+			if u, perr := url.Parse(cfg.APIURL); perr == nil {
+				apiHost = u.Hostname()
+			}
+		}
+		if apiHost == "" || !strings.EqualFold(apiHost, host) {
+			return nil, fmt.Errorf("unsupported forge host %q: companion supports GitHub; configure forge.api_url for a matching GitHub Enterprise host", host)
+		}
 	}
 	token := strings.TrimSpace(os.Getenv("COMPANION_FORGE_TOKEN"))
 	if token == "" {
@@ -83,7 +98,7 @@ func NewFromRemote(remote string, cfg config.ForgeConfig) (*Client, error) {
 	if token == "" {
 		token = ghAuthToken()
 	}
-	c := &Client{Owner: owner, Repo: repo, Token: token, enabled: token != ""}
+	c := &Client{Host: host, Owner: owner, Repo: repo, Token: token, enabled: token != ""}
 	base := strings.TrimRight(cfg.APIURL, "/")
 	if base == "" {
 		base = "https://api.github.com/"

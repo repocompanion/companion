@@ -30,6 +30,13 @@ All notable changes to this project are documented here. The format follows
 - Exit code `2` for pending publishes, with JSON output preserved.
 - Public launch documentation and community health files.
 
+### Changed
+
+- Raise the minimum supported Go version to 1.27.3 and update
+  `golang.org/x/tools` to 0.52.0.
+- Stabilize the Windows test suite with explicit LF rules and a Windows-safe
+  MCP root URI; run govulncheck with a patched stable toolchain.
+
 ### Fixed
 
 - Parse frontmatter with whole-line fences; a `---` inside a block scalar no

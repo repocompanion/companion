@@ -65,7 +65,7 @@ go install github.com/repocompanion/companion/cmd/companion@latest
 companion version
 ```
 
-Go 1.25 or newer is required. `companion version` reports the module version
+Go 1.27.3 or newer is required. `companion version` reports the module version
 for `go install` builds and the release version for downloaded archives.
 
 ### Build from source

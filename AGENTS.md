@@ -6,7 +6,7 @@ change.
 
 ## Workflow
 
-- Use Go 1.25+ and Git 2.30+.
+- Use Go 1.27.3+ and Git 2.30+.
 - Run `make fmt`, `make vet`, and `go test ./...` before proposing a change.
 - Keep changes small and focused. Add a regression test for every bug fix and
   tests for new behavior.

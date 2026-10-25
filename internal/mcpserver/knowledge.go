@@ -182,7 +182,8 @@ func registerKnowledgeTools(s *mcp.Server, p *provider) {
 		if err := docrules.ValidateProject(project); err != nil {
 			return errorResult(err)
 		}
-		area := "projects/" + strings.Trim(project, "/")
+		project = strings.Trim(project, "/")
+		area := "projects/" + project
 		o, err := sess.Manager.Overlay(ctx, area)
 		if err != nil {
 			return errorResult(err)
@@ -457,6 +458,7 @@ func setRegistry(ctx context.Context, sess *runtime.Session, project, field, val
 	if err := docrules.ValidateProject(project); err != nil {
 		return errorResult(err)
 	}
+	project = strings.Trim(project, "/")
 	if field != "team" && field != "domain" {
 		return errorResult(errors.New("registry scope supports field team or domain"))
 	}

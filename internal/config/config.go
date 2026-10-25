@@ -601,7 +601,7 @@ func (r Registry) Mapping(project string) (RepoMapping, bool) {
 // fields the caller does not change. Keeping the merge here prevents registry
 // writers from dropping a previously configured team or domain.
 func (r *Registry) SetRepoMapping(project string, update func(*RepoMapping)) {
-	if update == nil {
+	if project == "" || update == nil {
 		return
 	}
 	if r.Repos == nil {
@@ -864,7 +864,7 @@ func SetRepoKey(c *RepoConfig, key, value string) error {
 }
 
 func validateProjectField(value string) (string, error) {
-	value = strings.TrimSpace(value)
+	value = strings.Trim(strings.TrimSpace(value), "/")
 	if value == "" {
 		return "", nil
 	}

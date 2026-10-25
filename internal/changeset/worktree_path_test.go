@@ -1,12 +1,22 @@
 package changeset
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestStartRejectsNonCanonicalArea(t *testing.T) {
+	m, _ := newChangesetFixture(t)
+	for _, area := range []string{"org/payments", "teams/payments/extra", "projects/acme/api/extra"} {
+		if _, err := m.Start(context.Background(), "nested", area); err == nil || !strings.Contains(err.Error(), "area must be exactly") {
+			t.Errorf("Start(%q) error = %v, want canonical-area error", area, err)
+		}
+	}
+}
 
 func TestUniqueWorktreePathOrErrorFindsSuffix(t *testing.T) {
 	m := &Manager{}

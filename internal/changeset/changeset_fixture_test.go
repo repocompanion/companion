@@ -22,7 +22,12 @@ func newChangesetFixture(t *testing.T) (*Manager, state.Change) {
 	writeFile(t, seed, "projects/acme/api/README.md", "---\nid: readme\nkind: project-doc\ntitle: Acme API\nstatus: approved\nowners: [payments]\nlast_reviewed: 2026-01-01\n---\n# Acme API\n")
 	writeFile(t, seed, "projects/acme/api/flows/legacy.md", "---\nid: legacy\nkind: flow\ntitle: Legacy\nstatus: approved\nowners: [payments]\nlast_reviewed: 2026-01-01\n---\n# Legacy\n")
 	writeFile(t, seed, "projects/acme/api/flows/main.mmd", "graph TD\n")
+	// Git for Windows defaults core.autocrlf=true. Without an eol rule the
+	// worktree contains CRLF while these tests (and the docs contract) expect
+	// LF, so pin the fixture just like a real docs store should.
+	writeFile(t, seed, ".gitattributes", "* text=auto eol=lf\n")
 	git(t, seed, "init", "-q", "-b", "main")
+	git(t, seed, "config", "core.autocrlf", "false")
 	git(t, seed, "add", ".")
 	git(t, seed, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "seed")
 	git(t, root, "init", "-q", "--bare", remote)

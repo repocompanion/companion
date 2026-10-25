@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -118,7 +119,13 @@ last_reviewed: 2026-01-01
 	}
 	defer ss.Close()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	client.AddRoots(&mcp.Root{URI: (&url.URL{Scheme: "file", Path: seed}).String()})
+	rootPath := filepath.ToSlash(seed)
+	if runtime.GOOS == "windows" {
+		// A Windows drive path needs the standard file:///C:/... form; a raw
+		// backslash path produces an invalid file URI (file://C:\...).
+		rootPath = "/" + rootPath
+	}
+	client.AddRoots(&mcp.Root{URI: (&url.URL{Scheme: "file", Path: rootPath}).String()})
 	cs, err := client.Connect(ctx, ctt, nil)
 	if err != nil {
 		t.Fatal(err)

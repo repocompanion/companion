@@ -461,20 +461,17 @@ func setRegistry(ctx context.Context, sess *runtime.Session, project, field, val
 		return errorResult(err)
 	}
 	rel := ".docsync/registry.yaml"
-	var reg config.Registry
-	if raw, err := sess.Runtime.Store.Read(rel); err == nil {
-		_ = yaml.Unmarshal([]byte(raw), &reg)
+	reg, err := sess.Manager.LoadRegistry(c)
+	if err != nil {
+		return errorResult(err)
 	}
-	if reg.Repos == nil {
-		reg.Repos = map[string]config.RepoMapping{}
-	}
-	m := reg.Repos[project]
-	if field == "team" {
-		m.Team = value
-	} else {
-		m.Domain = value
-	}
-	reg.Repos[project] = m
+	reg.SetRepoMapping(project, func(m *config.RepoMapping) {
+		if field == "team" {
+			m.Team = value
+		} else {
+			m.Domain = value
+		}
+	})
 	b, err := yaml.Marshal(&reg)
 	if err != nil {
 		return errorResult(err)

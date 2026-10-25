@@ -594,6 +594,21 @@ func (r Registry) Mapping(project string) (RepoMapping, bool) {
 	return RepoMapping{}, false
 }
 
+// SetRepoMapping updates one repository mapping while preserving existing
+// fields the caller does not change. Keeping the merge here prevents registry
+// writers from dropping a previously configured team or domain.
+func (r *Registry) SetRepoMapping(project string, update func(*RepoMapping)) {
+	if update == nil {
+		return
+	}
+	if r.Repos == nil {
+		r.Repos = map[string]RepoMapping{}
+	}
+	mapping := r.Repos[project]
+	update(&mapping)
+	r.Repos[project] = mapping
+}
+
 // CodeOwnerRule is one useful line from .github/CODEOWNERS.
 type CodeOwnerRule struct {
 	Pattern string

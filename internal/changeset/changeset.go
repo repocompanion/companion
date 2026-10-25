@@ -22,6 +22,7 @@ import (
 	"github.com/bolacha/docsync/internal/state"
 	"github.com/bolacha/docsync/internal/store"
 	"github.com/gofrs/flock"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -400,6 +401,47 @@ func (m *Manager) ReadFileState(ctx context.Context, area, rel string) (content,
 		return string(b), "main", DocStateMain, nil
 	}
 	return "", source, state, fmt.Errorf("%s not found", clean)
+}
+
+// LoadRegistry reads the org registry from the active changeset worktree when
+// it exists, falling back to the main mirror. A malformed file is returned as
+// an error so callers never silently replace it with a partial registry.
+func (m *Manager) LoadRegistry(c state.Change) (config.Registry, error) {
+	const rel = ".docsync/registry.yaml"
+	raw, err := m.readWorktreeOrMain(c, rel)
+	if err != nil {
+		return config.Registry{}, err
+	}
+	var reg config.Registry
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return reg, nil
+	}
+	if err := yaml.Unmarshal(raw, &reg); err != nil {
+		return config.Registry{}, fmt.Errorf("parse %s: %w", rel, err)
+	}
+	return reg, nil
+}
+
+// readWorktreeOrMain reads a store-relative file from the changeset worktree,
+// falling back to main when the worktree copy does not exist. The worktree is
+// checked first so repeated edits in one changeset build on each other.
+func (m *Manager) readWorktreeOrMain(c state.Change, rel string) ([]byte, error) {
+	full, err := safeWorktreePath(c.Path, rel)
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(full)
+	if err == nil {
+		return b, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	content, err := m.Store.Read(rel)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	return []byte(content), err
 }
 
 func (m *Manager) git(ctx context.Context, args ...string) (string, error) {

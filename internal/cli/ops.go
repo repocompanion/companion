@@ -230,14 +230,17 @@ func (a *App) registryAddRepoCmd() *cobra.Command {
 				return err
 			}
 			rel := ".docsync/registry.yaml"
-			var reg config.Registry
-			if raw, err := s.Runtime.Store.Read(rel); err == nil {
-				_ = yaml.Unmarshal([]byte(raw), &reg)
+			reg, err := s.Manager.LoadRegistry(c)
+			if err != nil {
+				return err
 			}
-			if reg.Repos == nil {
-				reg.Repos = map[string]config.RepoMapping{}
-			}
-			reg.Repos[args[0]] = config.RepoMapping{Team: team, Domain: domain}
+			domainChanged := cmd.Flags().Changed("domain")
+			reg.SetRepoMapping(args[0], func(m *config.RepoMapping) {
+				m.Team = team
+				if domainChanged {
+					m.Domain = domain
+				}
+			})
 			b, err := yaml.Marshal(&reg)
 			if err != nil {
 				return err

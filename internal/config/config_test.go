@@ -114,3 +114,23 @@ func writeTestFile(t *testing.T, root, rel, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestSetRepoMappingPreservesUnchangedFields(t *testing.T) {
+	reg := Registry{Repos: map[string]RepoMapping{
+		"acme/api": {Team: "old-team", Domain: "checkout"},
+	}}
+
+	reg.SetRepoMapping("acme/api", func(m *RepoMapping) {
+		m.Team = "payments"
+	})
+	if got := reg.Repos["acme/api"]; got.Team != "payments" || got.Domain != "checkout" {
+		t.Fatalf("mapping = %+v, want team updated and domain preserved", got)
+	}
+
+	reg.SetRepoMapping("acme/new", func(m *RepoMapping) {
+		m.Domain = "billing"
+	})
+	if got := reg.Repos["acme/new"]; got.Domain != "billing" {
+		t.Fatalf("new mapping = %+v", got)
+	}
+}

@@ -87,3 +87,21 @@ func TestBM25UsesTermFrequency(t *testing.T) {
 		t.Fatalf("term frequency did not affect ranking: repeated=%.4f rare=%.4f", scores["org/patterns/repeated.md"], scores["org/patterns/rare.md"])
 	}
 }
+
+func TestSnippetLineIsFileRelative(t *testing.T) {
+	raw := "---\nid: line-test\ntitle: Line test\nstatus: approved\n---\n# Body\n\nFind me here.\n"
+	d, err := store.ParseDoc("projects/acme/api/flows/line.md", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits, err := Search([]*store.Doc{d}, "find", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("hits = %+v", hits)
+	}
+	if hits[0].Line != 8 {
+		t.Fatalf("line = %d, want 8", hits[0].Line)
+	}
+}

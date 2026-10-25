@@ -42,6 +42,7 @@ type Doc struct {
 	Path        string      `json:"path"`
 	Frontmatter Frontmatter `json:"frontmatter"`
 	Body        string      `json:"body"`
+	BodyLine    int         `json:"-"` // number of lines before Body in Raw
 	Raw         string      `json:"-"`
 	ModTime     int64       `json:"mod_time,omitempty"`
 }
@@ -79,38 +80,66 @@ func asString(v any) string {
 // ParseDoc parses YAML frontmatter and a markdown body.
 func ParseDoc(rel, raw string) (*Doc, error) {
 	d := &Doc{Path: rel, Raw: raw}
-	body := raw
-	if strings.HasPrefix(strings.TrimSpace(raw), "---") {
-		s := strings.TrimLeft(raw, " \t\r\n")
-		if strings.HasPrefix(s, "---") {
-			rest := s[3:]
-			if i := strings.Index(rest, "\n---"); i >= 0 {
-				fmText := rest[:i]
-				body = rest[i+4:]
-				body = strings.TrimPrefix(body, "\n")
-				var p parseFrontmatter
-				if err := yaml.Unmarshal([]byte(fmText), &p); err != nil {
-					return nil, fmt.Errorf("%s: invalid frontmatter: %w", rel, err)
-				}
-				d.Frontmatter = Frontmatter{
-					ID:             p.ID,
-					Kind:           p.Kind,
-					Title:          p.Title,
-					Status:         p.Status,
-					SupersededBy:   asString(p.SupersededBy),
-					Overrides:      asString(p.Overrides),
-					Topics:         p.Topics,
-					Languages:      p.Languages,
-					Related:        p.Related,
-					ReferenceImpls: p.ReferenceImpls,
-					Owners:         p.Owners,
-					LastReviewed:   asString(p.LastReviewed),
-				}
-			}
-		}
+	fmText, body, bodyLine, hasFrontmatter, err := splitFrontmatter(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", rel, err)
 	}
 	d.Body = body
+	d.BodyLine = bodyLine
+	if !hasFrontmatter {
+		return d, nil
+	}
+	var p parseFrontmatter
+	if err := yaml.Unmarshal([]byte(fmText), &p); err != nil {
+		return nil, fmt.Errorf("%s: invalid frontmatter: %w", rel, err)
+	}
+	d.Frontmatter = Frontmatter{
+		ID:             p.ID,
+		Kind:           p.Kind,
+		Title:          p.Title,
+		Status:         p.Status,
+		SupersededBy:   asString(p.SupersededBy),
+		Overrides:      asString(p.Overrides),
+		Topics:         p.Topics,
+		Languages:      p.Languages,
+		Related:        p.Related,
+		ReferenceImpls: p.ReferenceImpls,
+		Owners:         p.Owners,
+		LastReviewed:   asString(p.LastReviewed),
+	}
 	return d, nil
+}
+
+// splitFrontmatter finds a leading YAML frontmatter block using whole-line
+// fences. Matching arbitrary "\n---" text is not sufficient: a "---" line
+// inside a YAML block scalar is content, not the end of the document. The
+// returned bodyLine is the number of lines that precede Body, so search can
+// report file-relative line numbers.
+func splitFrontmatter(raw string) (fm, body string, bodyLine int, has bool, err error) {
+	raw = strings.TrimPrefix(raw, "\ufeff")
+	lines := strings.SplitAfter(raw, "\n")
+
+	start := 0
+	for start < len(lines) && strings.TrimSpace(trimEOL(lines[start])) == "" {
+		start++
+	}
+	if start == len(lines) || trimEOL(lines[start]) != "---" {
+		return "", raw, 0, false, nil
+	}
+
+	var b strings.Builder
+	for i := start + 1; i < len(lines); i++ {
+		if line := trimEOL(lines[i]); line == "---" || line == "..." {
+			return b.String(), strings.Join(lines[i+1:], ""), i + 1, true, nil
+		}
+		b.WriteString(lines[i])
+	}
+	return "", "", 0, false, errors.New("unclosed frontmatter fence")
+}
+
+func trimEOL(line string) string {
+	line = strings.TrimSuffix(line, "\n")
+	return strings.TrimSuffix(line, "\r")
 }
 
 func (s *Store) LoadDoc(rel string) (*Doc, error) {

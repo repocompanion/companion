@@ -290,7 +290,10 @@ func bestSnippet(d *store.Doc, terms []string) (string, int) {
 	if runes := []rune(best); len(runes) > 240 {
 		best = string(runes[:237]) + "..."
 	}
-	return best, bestLine
+	if bestHits == 0 {
+		return best, 0
+	}
+	return best, d.BodyLine + bestLine
 }
 
 func sortedFields(set map[string]bool) []string {

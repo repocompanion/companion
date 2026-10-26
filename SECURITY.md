@@ -9,8 +9,8 @@ will be taken seriously.
 
 | Version | Security fixes |
 |---|---|
-| `0.1.x` | Yes |
-| `< 0.1` | No |
+| `0.2.x` | Yes |
+| `< 0.2` | No |
 
 This project is pre-1.0. Fixes are made on `main` and released as a new patch
 or minor version. There is no long-term-support branch yet.

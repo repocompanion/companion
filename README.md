@@ -15,7 +15,7 @@ this task?”* and find the relevant docs without guessing paths. It can then
 propose documentation changes through the same reviewed PR workflow humans use.
 Agents never merge.
 
-> **Status: v0.1, pre-1.0.** The core workflow is usable, but interfaces may
+> **Status: v0.2, pre-1.0.** The core workflow is usable, but interfaces may
 > still change between minor releases. See [VERSIONING.md](VERSIONING.md) and
 > the [roadmap](ROADMAP.md).
 

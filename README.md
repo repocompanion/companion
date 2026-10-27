@@ -37,6 +37,18 @@ pushed branch, and changeset commit must all exist. See
 
 ## Install
 
+### Homebrew
+
+```bash
+brew install repocompanion/tap/repo-companion
+companion version
+```
+
+The formula is named `repo-companion` and installs the `companion` binary with
+shell completions. It supports macOS on Intel and Apple Silicon, and Linux on
+x86_64 and arm64. Installing with the fully qualified name trusts only this
+formula; `brew upgrade repo-companion` upgrades it.
+
 ### Prebuilt binaries
 
 Download the archive for your OS and architecture from

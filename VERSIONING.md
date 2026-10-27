@@ -53,6 +53,9 @@ reject them; use the version documented for that store until you upgrade.
 - The release workflow runs `go vet` and `go test` before publishing.
 - GoReleaser produces Linux, macOS, and Windows archives for amd64 and arm64,
   plus `checksums.txt`.
+- After the release is published, update the `repo-companion` formula in the
+  [Homebrew tap](https://github.com/repocompanion/homebrew-tap) with the new
+  version and SHA-256 checksums from `checksums.txt`.
 - Release notes are generated from conventional commits and should be reviewed
   by a maintainer before the tag is pushed.
 - Pre-1.0 versions are supported on a best-effort basis only; see

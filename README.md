@@ -190,6 +190,24 @@ companion export llms-txt --output llms.txt
 companion export context --format markdown --output context.md
 ```
 
+### Agent skill
+
+The repository also ships an [Agent Skill](https://agentskills.io) for clients
+that load `SKILL.md`. It teaches the agent when to ask for guidance and how the
+changeset workflow fits together, and it works alongside MCP. Install it with:
+
+```bash
+# Current project
+npx skills add repocompanion/companion --skill repo-companion
+
+# Or for every project (user scope)
+npx skills add repocompanion/companion --skill repo-companion -g
+```
+
+The skill lives in [`skills/repo-companion/`](skills/repo-companion/). It does
+not replace the MCP tools or the exports: MCP provides the actions, and the
+skill provides the procedure.
+
 ## What it does
 
 - **One central docs store** with `org/`, `teams/`, and

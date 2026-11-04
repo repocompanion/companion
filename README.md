@@ -137,6 +137,17 @@ companion doctor --strict
 of each value. `companion guidance` ranks patterns, ADRs, and standards and
 attaches validated `reference_impls` where the code repository is available.
 
+`context` and `guidance` accept `--store <dir>` to read a checked-out store
+instead of the local mirror. That path is read-only, skips the user config and
+environment overrides, and resolves `--project`/`--team` from flags,
+`.companion.yaml`, or the current repository. CI jobs and reviewers use it with
+a pinned checkout:
+
+```bash
+companion context --store ../docs-store --project acme/api
+companion guidance "implement an SQS consumer in Go" --store ../docs-store --project acme/api --json
+```
+
 ### 4. Make a documentation change
 
 ```bash
@@ -286,12 +297,12 @@ paths, and safety boundaries.
 |---|---|
 | `companion init --remote <url>` | Clone the store and create the local mirror; seed an empty store |
 | `companion pull` | Fetch `main` and fast-forward the mirror |
-| `companion context` / `project` | Show resolved project, team, languages, and provenance |
+| `companion context [--store DIR]` / `project` | Show resolved project, team, languages, and provenance |
 | `companion status` | Mirror, changesets, dirty files, and PR state |
 | `companion ls [DIR] [--pending]` | List docs, optionally with active changeset state |
 | `companion cat <doc> [--rev R] [--pr N]` | Print a document from main, a revision, or a PR |
 | `companion search <query> [--all]` | Search the active overlay |
-| `companion guidance "<task>" [--lang go]` | Ranked patterns, ADRs, and standards with code context |
+| `companion guidance "<task>" [--store DIR] [--lang go]` | Ranked patterns, ADRs, and standards with code context |
 | `companion change` (`start`, `sync`, `submit`, `reopen`, `rebase`, `cleanup`, `abandon`, `join`, `adopt`) | Manage the changeset lifecycle |
 | `companion new <doc> --template ...` | Create a document from a canonical template |
 | `companion adr new "<title>"` | Create a date-stamped ADR |

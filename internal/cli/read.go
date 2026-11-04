@@ -16,18 +16,28 @@ import (
 )
 
 func (a *App) contextCmd() *cobra.Command {
-	return &cobra.Command{
+	var storePath string
+	cmd := &cobra.Command{
 		Use:   "context",
 		Short: "Show resolved context and where each value came from",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := a.session()
-			if err != nil {
-				return err
+			var c *config.Context
+			if storePath != "" {
+				es, err := a.explicitStore(storePath)
+				if err != nil {
+					return err
+				}
+				c = es.Ctx
+			} else {
+				s, err := a.session()
+				if err != nil {
+					return err
+				}
+				c = s.Context
 			}
 			if a.JSON {
-				return a.printJSON(s.Context)
+				return a.printJSON(c)
 			}
-			c := s.Context
 			fmt.Printf("%-10s %-42s %s\n", "user", formatUser(c), source(c, "user"))
 			fmt.Printf("%-10s %-42s %s\n", "machine", valueOr(c.Machine, "-"), source(c, "machine"))
 			fmt.Printf("%-10s %-42s %s\n", "project", valueOr(c.Project, "-"), source(c, "project"))
@@ -45,6 +55,8 @@ func (a *App) contextCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&storePath, "store", "", "read a checked-out store instead of the local mirror (ignores user config)")
+	return cmd
 }
 
 func (a *App) projectCmd() *cobra.Command {
@@ -293,49 +305,63 @@ func (a *App) searchCmd() *cobra.Command {
 func (a *App) guidanceCmd() *cobra.Command {
 	var maxResults int
 	var full bool
+	var storePath string
 	cmd := &cobra.Command{
 		Use:   "guidance <task>",
 		Short: "Find patterns, ADRs and standards for a task",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := a.requireStore(); err != nil {
-				return err
-			}
-			s, err := a.session()
-			if err != nil {
-				return err
+			var ctx *config.Context
+			var docs []*store.Doc
+			var storeRoot string
+			var mgr *changeset.Manager
+			if storePath != "" {
+				es, err := a.explicitStore(storePath)
+				if err != nil {
+					return err
+				}
+				ctx, storeRoot = es.Ctx, es.Root
+				docs, err = es.Docs()
+				if err != nil {
+					return err
+				}
+			} else {
+				if err := a.requireStore(); err != nil {
+					return err
+				}
+				s, err := a.session()
+				if err != nil {
+					return err
+				}
+				ctx, mgr = s.Context, s.Manager
+				o, err := s.Manager.OverlayAll(context.Background())
+				if err != nil {
+					return err
+				}
+				docs = o.Docs
 			}
 			lang := ""
 			if len(a.Languages) > 0 {
 				lang = a.Languages[0]
 			}
-			o, err := s.Manager.OverlayAll(context.Background())
+			results, err := guidance.LookupDocs(docs, ctx, strings.Join(args, " "), lang, maxResults)
 			if err != nil {
 				return err
 			}
-			results, err := guidance.LookupDocs(o.Docs, s.Context, strings.Join(args, " "), lang, maxResults)
-			if err != nil {
-				return err
-			}
-			guidance.Enrich(context.Background(), results, s.Context.RepoRoot, s.Context.Project)
+			guidance.Enrich(context.Background(), results, ctx.RepoRoot, ctx.Project)
 			if a.JSON {
 				return a.printJSON(results)
 			}
 			fmt.Print(guidance.FormatCompact(results))
 			if full {
 				for _, r := range results {
-					area, aerr := changeset.AreaForPath(r.Path)
-					if aerr != nil {
-						fmt.Printf("\n----- %s -----\n(unable to resolve area: %v)\n", r.Path, aerr)
-						continue
-					}
-					content, source, docState, rerr := s.Manager.ReadFileState(context.Background(), area, r.Path)
+					content, where, deleted, rerr := readFullDoc(storeRoot, mgr, r.Path)
 					if rerr != nil {
 						fmt.Printf("\n----- %s -----\n(unable to read: %v)\n", r.Path, rerr)
 						continue
 					}
-					if docState == changeset.DocStateDeleted {
-						fmt.Printf("\n----- %s -----\n(deleted in %s)\n", r.Path, source)
+					if deleted {
+						fmt.Printf("\n----- %s -----\n(deleted in %s)\n", r.Path, where)
 						continue
 					}
 					fmt.Printf("\n----- %s -----\n%s\n", r.Path, content)
@@ -346,7 +372,29 @@ func (a *App) guidanceCmd() *cobra.Command {
 	}
 	cmd.Flags().IntVar(&maxResults, "max", 5, "maximum results")
 	cmd.Flags().BoolVar(&full, "full", false, "print full document bodies")
+	cmd.Flags().StringVar(&storePath, "store", "", "read a checked-out store instead of the local mirror (ignores user config)")
 	return cmd
+}
+
+// readFullDoc reads a guidance result from the explicit store or, for the
+// normal path, from the active changeset overlay.
+func readFullDoc(storeRoot string, mgr *changeset.Manager, docPath string) (content, where string, deleted bool, err error) {
+	if storeRoot != "" {
+		b, err := store.ReadFileUnder(storeRoot, docPath)
+		if err != nil {
+			return "", "", false, err
+		}
+		return string(b), "store checkout", false, nil
+	}
+	area, err := changeset.AreaForPath(docPath)
+	if err != nil {
+		return "", "", false, fmt.Errorf("resolve area: %w", err)
+	}
+	content, where, state, err := mgr.ReadFileState(context.Background(), area, docPath)
+	if err != nil {
+		return "", "", false, err
+	}
+	return content, where, state == changeset.DocStateDeleted, nil
 }
 
 func resolveDoc(s *runtime.Session, arg string) (string, error) {

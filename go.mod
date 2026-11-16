@@ -3,7 +3,7 @@ module github.com/repocompanion/companion
 go 1.27.3
 
 require (
-	github.com/gofrs/flock v0.13.1
+	github.com/gofrs/flock v0.13.2
 	github.com/google/go-github/v68 v68.0.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/spf13/cobra v1.10.2
